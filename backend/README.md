@@ -3,6 +3,7 @@
 ## Research
 
 1. Betano API fetched from devtools: <https://www.betano.bet.br/api/sports/FOOT/hot/trending/leagues/10016/events?req=la,s,stnf,c,mb>
+2. Think about BetFair, better for longer term profit
 
 ## Running
 
