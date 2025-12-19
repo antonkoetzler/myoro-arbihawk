@@ -1,0 +1,16 @@
+{
+  "name": "myoro-arbihawk",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:web": "bun run --filter web dev",
+    "dev:server": "bun run --filter server dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
