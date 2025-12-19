@@ -1,0 +1,31 @@
+{
+  "common": {
+    "loading": "Caricamento...",
+    "error": "Si è verificato un errore",
+    "retry": "Riprova",
+    "cancel": "Annulla",
+    "confirm": "Conferma",
+    "save": "Salva",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "back": "Indietro",
+    "next": "Avanti",
+    "done": "Fatto"
+  },
+  "counter": {
+    "title": "Contatore",
+    "value": "Valore attuale",
+    "increment": "Incrementa",
+    "decrement": "Decrementa",
+    "reset": "Reimposta"
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "language": "Lingua",
+    "theme": "Tema",
+    "dark": "Scuro",
+    "light": "Chiaro",
+    "system": "Sistema"
+  }
+}
+

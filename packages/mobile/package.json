@@ -1,0 +1,30 @@
+{
+  "name": "@repo/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "build": "expo prebuild"
+  },
+  "dependencies": {
+    "@repo/ui": "workspace:*",
+    "@repo/i18n": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "expo": "~50.0.0",
+    "expo-router": "~3.4.0",
+    "expo-status-bar": "~1.11.0",
+    "react": "^18.2.0",
+    "react-native": "0.73.2",
+    "react-native-safe-area-context": "4.8.2",
+    "react-native-screens": "~3.29.0",
+    "@react-navigation/native": "^6.1.9"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.7",
+    "@types/react": "^18.2.0",
+    "@tamagui/babel-plugin": "^1.89.0"
+  }
+}

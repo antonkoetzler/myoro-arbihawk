@@ -1,0 +1,31 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "error": "Er is een fout opgetreden",
+    "retry": "Opnieuw proberen",
+    "cancel": "Annuleren",
+    "confirm": "Bevestigen",
+    "save": "Opslaan",
+    "delete": "Verwijderen",
+    "edit": "Bewerken",
+    "back": "Terug",
+    "next": "Volgende",
+    "done": "Klaar"
+  },
+  "counter": {
+    "title": "Teller",
+    "value": "Huidige waarde",
+    "increment": "Verhogen",
+    "decrement": "Verlagen",
+    "reset": "Resetten"
+  },
+  "settings": {
+    "title": "Instellingen",
+    "language": "Taal",
+    "theme": "Thema",
+    "dark": "Donker",
+    "light": "Licht",
+    "system": "Systeem"
+  }
+}
+
