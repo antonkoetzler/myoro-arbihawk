@@ -1,8 +1,0 @@
-[install]
-# Use exact versions
-exact = true
-
-[install.lockfile]
-# Save the lockfile
-save = true
-

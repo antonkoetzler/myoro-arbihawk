@@ -1,2 +1,0 @@
-export { CounterScreen } from './CounterScreen';
-
