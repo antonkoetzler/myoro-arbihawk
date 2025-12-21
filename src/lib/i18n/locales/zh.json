@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "登录",
+    "signup": "注册",
+    "email": "电子邮件",
+    "password": "密码",
+    "submit": "提交",
+    "loading": "加载中...",
+    "noAccount": "没有账户？注册",
+    "hasAccount": "已有账户？登录",
+    "userExists": "用户已存在",
+    "invalidCredentials": "凭据无效"
+  },
+  "greeting": {
+    "hello": "你好世界"
+  },
+  "errors": {
+    "generic": "发生错误"
+  },
+  "leagues": {
+    "title": "联赛",
+    "browse": "浏览联赛",
+    "subscribe": "订阅",
+    "subscribed": "已订阅",
+    "active": "活跃",
+    "inactive": "非活跃",
+    "country": "国家",
+    "noLeagues": "没有可用的联赛"
+  },
+  "subscriptions": {
+    "title": "订阅",
+    "mySubscriptions": "我的订阅",
+    "active": "活跃",
+    "canceled": "已取消",
+    "cancel": "取消订阅",
+    "cancelConfirm": "您确定要取消此订阅吗？",
+    "noSubscriptions": "您没有活跃的订阅",
+    "renewsOn": "续订日期"
+  },
+  "matches": {
+    "title": "比赛",
+    "upcoming": "即将到来",
+    "live": "直播",
+    "finished": "已结束",
+    "vs": "对",
+    "date": "日期",
+    "time": "时间",
+    "score": "比分"
+  }
+}

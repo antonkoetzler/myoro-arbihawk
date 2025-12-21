@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "تسجيل الدخول",
+    "signup": "إنشاء حساب",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "submit": "إرسال",
+    "loading": "جاري التحميل...",
+    "noAccount": "ليس لديك حساب؟ سجل الآن",
+    "hasAccount": "لديك حساب بالفعل؟ تسجيل الدخول",
+    "userExists": "المستخدم موجود بالفعل",
+    "invalidCredentials": "بيانات اعتماد غير صحيحة"
+  },
+  "greeting": {
+    "hello": "مرحبا بالعالم"
+  },
+  "errors": {
+    "generic": "حدث خطأ"
+  },
+  "leagues": {
+    "title": "الدوريات",
+    "browse": "تصفح الدوريات",
+    "subscribe": "اشترك",
+    "subscribed": "مشترك",
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "country": "البلد",
+    "noLeagues": "لا توجد دوريات متاحة"
+  },
+  "subscriptions": {
+    "title": "الاشتراكات",
+    "mySubscriptions": "اشتراكاتي",
+    "active": "نشط",
+    "canceled": "ملغي",
+    "cancel": "إلغاء الاشتراك",
+    "cancelConfirm": "هل أنت متأكد أنك تريد إلغاء هذا الاشتراك؟",
+    "noSubscriptions": "ليس لديك اشتراكات نشطة",
+    "renewsOn": "يتجدد في"
+  },
+  "matches": {
+    "title": "المباريات",
+    "upcoming": "القادمة",
+    "live": "مباشر",
+    "finished": "منتهية",
+    "vs": "ضد",
+    "date": "التاريخ",
+    "time": "الوقت",
+    "score": "النتيجة"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "登入",
+    "signup": "註冊",
+    "email": "電子郵件",
+    "password": "密碼",
+    "submit": "提交",
+    "loading": "載入中...",
+    "noAccount": "沒有帳戶？註冊",
+    "hasAccount": "已有帳戶？登入",
+    "userExists": "用戶已存在",
+    "invalidCredentials": "憑證無效"
+  },
+  "greeting": {
+    "hello": "你好世界"
+  },
+  "errors": {
+    "generic": "發生錯誤"
+  },
+  "leagues": {
+    "title": "聯賽",
+    "browse": "瀏覽聯賽",
+    "subscribe": "訂閱",
+    "subscribed": "已訂閱",
+    "active": "活躍",
+    "inactive": "非活躍",
+    "country": "國家",
+    "noLeagues": "沒有可用的聯賽"
+  },
+  "subscriptions": {
+    "title": "訂閱",
+    "mySubscriptions": "我的訂閱",
+    "active": "活躍",
+    "canceled": "已取消",
+    "cancel": "取消訂閱",
+    "cancelConfirm": "您確定要取消此訂閱嗎？",
+    "noSubscriptions": "您沒有活躍的訂閱",
+    "renewsOn": "續訂日期"
+  },
+  "matches": {
+    "title": "比賽",
+    "upcoming": "即將到來",
+    "live": "直播",
+    "finished": "已結束",
+    "vs": "對",
+    "date": "日期",
+    "time": "時間",
+    "score": "比分"
+  }
+}

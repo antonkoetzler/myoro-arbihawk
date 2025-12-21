@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Đăng nhập",
+    "signup": "Đăng ký",
+    "email": "Email",
+    "password": "Mật khẩu",
+    "submit": "Gửi",
+    "loading": "Đang tải...",
+    "noAccount": "Chưa có tài khoản? Đăng ký",
+    "hasAccount": "Đã có tài khoản? Đăng nhập",
+    "userExists": "Người dùng đã tồn tại",
+    "invalidCredentials": "Thông tin đăng nhập không hợp lệ"
+  },
+  "greeting": {
+    "hello": "Xin chào thế giới"
+  },
+  "errors": {
+    "generic": "Đã xảy ra lỗi"
+  },
+  "leagues": {
+    "title": "Giải đấu",
+    "browse": "Duyệt Giải đấu",
+    "subscribe": "Đăng ký",
+    "subscribed": "Đã đăng ký",
+    "active": "Hoạt động",
+    "inactive": "Không hoạt động",
+    "country": "Quốc gia",
+    "noLeagues": "Không có giải đấu nào"
+  },
+  "subscriptions": {
+    "title": "Đăng ký",
+    "mySubscriptions": "Đăng ký của tôi",
+    "active": "Hoạt động",
+    "canceled": "Đã hủy",
+    "cancel": "Hủy đăng ký",
+    "cancelConfirm": "Bạn có chắc chắn muốn hủy đăng ký này không?",
+    "noSubscriptions": "Bạn không có đăng ký nào đang hoạt động",
+    "renewsOn": "Gia hạn vào"
+  },
+  "matches": {
+    "title": "Trận đấu",
+    "upcoming": "Sắp tới",
+    "live": "Trực tiếp",
+    "finished": "Đã kết thúc",
+    "vs": "vs",
+    "date": "Ngày",
+    "time": "Giờ",
+    "score": "Tỷ số"
+  }
+}

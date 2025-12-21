@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Login",
+    "signup": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Submit",
+    "loading": "Loading...",
+    "noAccount": "Don't have an account? Sign up",
+    "hasAccount": "Already have an account? Login",
+    "userExists": "User already exists",
+    "invalidCredentials": "Invalid credentials"
+  },
+  "greeting": {
+    "hello": "Hello World"
+  },
+  "errors": {
+    "generic": "An error occurred"
+  },
+  "leagues": {
+    "title": "Leagues",
+    "browse": "Browse Leagues",
+    "subscribe": "Subscribe",
+    "subscribed": "Subscribed",
+    "active": "Active",
+    "inactive": "Inactive",
+    "country": "Country",
+    "noLeagues": "No leagues available"
+  },
+  "subscriptions": {
+    "title": "Subscriptions",
+    "mySubscriptions": "My Subscriptions",
+    "active": "Active",
+    "canceled": "Canceled",
+    "cancel": "Cancel Subscription",
+    "cancelConfirm": "Are you sure you want to cancel this subscription?",
+    "noSubscriptions": "You don't have any active subscriptions",
+    "renewsOn": "Renews on"
+  },
+  "matches": {
+    "title": "Matches",
+    "upcoming": "Upcoming",
+    "live": "Live",
+    "finished": "Finished",
+    "vs": "vs",
+    "date": "Date",
+    "time": "Time",
+    "score": "Score"
+  }
+}

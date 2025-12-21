@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Giriş yap",
+    "signup": "Kayıt ol",
+    "email": "E-posta",
+    "password": "Şifre",
+    "submit": "Gönder",
+    "loading": "Yükleniyor...",
+    "noAccount": "Hesabınız yok mu? Kayıt olun",
+    "hasAccount": "Zaten hesabınız var mı? Giriş yapın",
+    "userExists": "Kullanıcı zaten mevcut",
+    "invalidCredentials": "Geçersiz kimlik bilgileri"
+  },
+  "greeting": {
+    "hello": "Merhaba Dünya"
+  },
+  "errors": {
+    "generic": "Bir hata oluştu"
+  },
+  "leagues": {
+    "title": "Ligler",
+    "browse": "Ligleri Görüntüle",
+    "subscribe": "Abone Ol",
+    "subscribed": "Abone",
+    "active": "Aktif",
+    "inactive": "Pasif",
+    "country": "Ülke",
+    "noLeagues": "Kullanılabilir lig yok"
+  },
+  "subscriptions": {
+    "title": "Abonelikler",
+    "mySubscriptions": "Aboneliklerim",
+    "active": "Aktif",
+    "canceled": "İptal Edildi",
+    "cancel": "Aboneliği İptal Et",
+    "cancelConfirm": "Bu aboneliği iptal etmek istediğinizden emin misiniz?",
+    "noSubscriptions": "Aktif aboneliğiniz yok",
+    "renewsOn": "Yenilenme tarihi"
+  },
+  "matches": {
+    "title": "Maçlar",
+    "upcoming": "Yaklaşan",
+    "live": "Canlı",
+    "finished": "Bitti",
+    "vs": "karşı",
+    "date": "Tarih",
+    "time": "Saat",
+    "score": "Skor"
+  }
+}

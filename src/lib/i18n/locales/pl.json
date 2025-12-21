@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Zaloguj się",
+    "signup": "Zarejestruj się",
+    "email": "E-mail",
+    "password": "Hasło",
+    "submit": "Wyślij",
+    "loading": "Ładowanie...",
+    "noAccount": "Nie masz konta? Zarejestruj się",
+    "hasAccount": "Masz już konto? Zaloguj się",
+    "userExists": "Użytkownik już istnieje",
+    "invalidCredentials": "Nieprawidłowe dane logowania"
+  },
+  "greeting": {
+    "hello": "Witaj Świecie"
+  },
+  "errors": {
+    "generic": "Wystąpił błąd"
+  },
+  "leagues": {
+    "title": "Ligi",
+    "browse": "Przeglądaj Ligi",
+    "subscribe": "Subskrybuj",
+    "subscribed": "Subskrybowane",
+    "active": "Aktywne",
+    "inactive": "Nieaktywne",
+    "country": "Kraj",
+    "noLeagues": "Brak dostępnych lig"
+  },
+  "subscriptions": {
+    "title": "Subskrypcje",
+    "mySubscriptions": "Moje Subskrypcje",
+    "active": "Aktywna",
+    "canceled": "Anulowana",
+    "cancel": "Anuluj Subskrypcję",
+    "cancelConfirm": "Czy na pewno chcesz anulować tę subskrypcję?",
+    "noSubscriptions": "Nie masz aktywnych subskrypcji",
+    "renewsOn": "Odnawia się"
+  },
+  "matches": {
+    "title": "Mecze",
+    "upcoming": "Nadchodzące",
+    "live": "Na żywo",
+    "finished": "Zakończone",
+    "vs": "przeciwko",
+    "date": "Data",
+    "time": "Godzina",
+    "score": "Wynik"
+  }
+}

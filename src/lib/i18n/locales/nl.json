@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Inloggen",
+    "signup": "Registreren",
+    "email": "E-mail",
+    "password": "Wachtwoord",
+    "submit": "Verzenden",
+    "loading": "Laden...",
+    "noAccount": "Geen account? Registreer",
+    "hasAccount": "Al een account? Log in",
+    "userExists": "Gebruiker bestaat al",
+    "invalidCredentials": "Ongeldige inloggegevens"
+  },
+  "greeting": {
+    "hello": "Hallo Wereld"
+  },
+  "errors": {
+    "generic": "Er is een fout opgetreden"
+  },
+  "leagues": {
+    "title": "Competities",
+    "browse": "Competities doorbladeren",
+    "subscribe": "Abonneren",
+    "subscribed": "Geabonneerd",
+    "active": "Actief",
+    "inactive": "Inactief",
+    "country": "Land",
+    "noLeagues": "Geen competities beschikbaar"
+  },
+  "subscriptions": {
+    "title": "Abonnementen",
+    "mySubscriptions": "Mijn Abonnementen",
+    "active": "Actief",
+    "canceled": "Geannuleerd",
+    "cancel": "Abonnement opzeggen",
+    "cancelConfirm": "Weet u zeker dat u dit abonnement wilt opzeggen?",
+    "noSubscriptions": "U heeft geen actieve abonnementen",
+    "renewsOn": "Verlengt op"
+  },
+  "matches": {
+    "title": "Wedstrijden",
+    "upcoming": "Aankomend",
+    "live": "Live",
+    "finished": "Afgelopen",
+    "vs": "tegen",
+    "date": "Datum",
+    "time": "Tijd",
+    "score": "Score"
+  }
+}

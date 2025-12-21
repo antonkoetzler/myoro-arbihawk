@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Anmelden",
+    "signup": "Registrieren",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "submit": "Absenden",
+    "loading": "Wird geladen...",
+    "noAccount": "Noch kein Konto? Registrieren",
+    "hasAccount": "Bereits ein Konto? Anmelden",
+    "userExists": "Benutzer existiert bereits",
+    "invalidCredentials": "Ungültige Anmeldedaten"
+  },
+  "greeting": {
+    "hello": "Hallo Welt"
+  },
+  "errors": {
+    "generic": "Ein Fehler ist aufgetreten"
+  },
+  "leagues": {
+    "title": "Ligen",
+    "browse": "Ligen durchsuchen",
+    "subscribe": "Abonnieren",
+    "subscribed": "Abonniert",
+    "active": "Aktiv",
+    "inactive": "Inaktiv",
+    "country": "Land",
+    "noLeagues": "Keine Ligen verfügbar"
+  },
+  "subscriptions": {
+    "title": "Abonnements",
+    "mySubscriptions": "Meine Abonnements",
+    "active": "Aktiv",
+    "canceled": "Storniert",
+    "cancel": "Abonnement kündigen",
+    "cancelConfirm": "Sind Sie sicher, dass Sie dieses Abonnement kündigen möchten?",
+    "noSubscriptions": "Sie haben keine aktiven Abonnements",
+    "renewsOn": "Erneuert am"
+  },
+  "matches": {
+    "title": "Spiele",
+    "upcoming": "Bevorstehend",
+    "live": "Live",
+    "finished": "Beendet",
+    "vs": "gegen",
+    "date": "Datum",
+    "time": "Zeit",
+    "score": "Punkte"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "로그인",
+    "signup": "회원가입",
+    "email": "이메일",
+    "password": "비밀번호",
+    "submit": "제출",
+    "loading": "로딩 중...",
+    "noAccount": "계정이 없으신가요? 회원가입",
+    "hasAccount": "이미 계정이 있으신가요? 로그인",
+    "userExists": "사용자가 이미 존재합니다",
+    "invalidCredentials": "잘못된 자격 증명"
+  },
+  "greeting": {
+    "hello": "안녕하세요 세계"
+  },
+  "errors": {
+    "generic": "오류가 발생했습니다"
+  },
+  "leagues": {
+    "title": "리그",
+    "browse": "리그 둘러보기",
+    "subscribe": "구독",
+    "subscribed": "구독 중",
+    "active": "활성",
+    "inactive": "비활성",
+    "country": "국가",
+    "noLeagues": "사용 가능한 리그가 없습니다"
+  },
+  "subscriptions": {
+    "title": "구독",
+    "mySubscriptions": "내 구독",
+    "active": "활성",
+    "canceled": "취소됨",
+    "cancel": "구독 취소",
+    "cancelConfirm": "이 구독을 취소하시겠습니까?",
+    "noSubscriptions": "활성 구독이 없습니다",
+    "renewsOn": "갱신일"
+  },
+  "matches": {
+    "title": "경기",
+    "upcoming": "예정",
+    "live": "라이브",
+    "finished": "종료",
+    "vs": "대",
+    "date": "날짜",
+    "time": "시간",
+    "score": "점수"
+  }
+}

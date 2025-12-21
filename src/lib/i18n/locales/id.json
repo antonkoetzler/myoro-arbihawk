@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Masuk",
+    "signup": "Daftar",
+    "email": "Email",
+    "password": "Kata sandi",
+    "submit": "Kirim",
+    "loading": "Memuat...",
+    "noAccount": "Belum punya akun? Daftar",
+    "hasAccount": "Sudah punya akun? Masuk",
+    "userExists": "Pengguna sudah ada",
+    "invalidCredentials": "Kredensial tidak valid"
+  },
+  "greeting": {
+    "hello": "Halo Dunia"
+  },
+  "errors": {
+    "generic": "Terjadi kesalahan"
+  },
+  "leagues": {
+    "title": "Liga",
+    "browse": "Jelajahi Liga",
+    "subscribe": "Berlangganan",
+    "subscribed": "Berlangganan",
+    "active": "Aktif",
+    "inactive": "Tidak aktif",
+    "country": "Negara",
+    "noLeagues": "Tidak ada liga tersedia"
+  },
+  "subscriptions": {
+    "title": "Langganan",
+    "mySubscriptions": "Langganan Saya",
+    "active": "Aktif",
+    "canceled": "Dibatalkan",
+    "cancel": "Batalkan Langganan",
+    "cancelConfirm": "Apakah Anda yakin ingin membatalkan langganan ini?",
+    "noSubscriptions": "Anda tidak memiliki langganan aktif",
+    "renewsOn": "Diperbarui pada"
+  },
+  "matches": {
+    "title": "Pertandingan",
+    "upcoming": "Mendatang",
+    "live": "Live",
+    "finished": "Selesai",
+    "vs": "vs",
+    "date": "Tanggal",
+    "time": "Waktu",
+    "score": "Skor"
+  }
+}

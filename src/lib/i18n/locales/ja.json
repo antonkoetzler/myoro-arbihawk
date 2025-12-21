@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "ログイン",
+    "signup": "サインアップ",
+    "email": "メールアドレス",
+    "password": "パスワード",
+    "submit": "送信",
+    "loading": "読み込み中...",
+    "noAccount": "アカウントをお持ちでないですか？サインアップ",
+    "hasAccount": "すでにアカウントをお持ちですか？ログイン",
+    "userExists": "ユーザーは既に存在します",
+    "invalidCredentials": "無効な認証情報"
+  },
+  "greeting": {
+    "hello": "こんにちは世界"
+  },
+  "errors": {
+    "generic": "エラーが発生しました"
+  },
+  "leagues": {
+    "title": "リーグ",
+    "browse": "リーグを閲覧",
+    "subscribe": "購読",
+    "subscribed": "購読中",
+    "active": "アクティブ",
+    "inactive": "非アクティブ",
+    "country": "国",
+    "noLeagues": "利用可能なリーグがありません"
+  },
+  "subscriptions": {
+    "title": "購読",
+    "mySubscriptions": "マイ購読",
+    "active": "アクティブ",
+    "canceled": "キャンセル済み",
+    "cancel": "購読をキャンセル",
+    "cancelConfirm": "この購読をキャンセルしてもよろしいですか？",
+    "noSubscriptions": "アクティブな購読がありません",
+    "renewsOn": "更新日"
+  },
+  "matches": {
+    "title": "試合",
+    "upcoming": "今後の",
+    "live": "ライブ",
+    "finished": "終了",
+    "vs": "対",
+    "date": "日付",
+    "time": "時間",
+    "score": "スコア"
+  }
+}

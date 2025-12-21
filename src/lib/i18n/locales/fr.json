@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Se connecter",
+    "signup": "S'inscrire",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "submit": "Envoyer",
+    "loading": "Chargement...",
+    "noAccount": "Vous n'avez pas de compte ? Inscrivez-vous",
+    "hasAccount": "Vous avez déjà un compte ? Connectez-vous",
+    "userExists": "L'utilisateur existe déjà",
+    "invalidCredentials": "Identifiants invalides"
+  },
+  "greeting": {
+    "hello": "Bonjour le monde"
+  },
+  "errors": {
+    "generic": "Une erreur s'est produite"
+  },
+  "leagues": {
+    "title": "Championnats",
+    "browse": "Parcourir les championnats",
+    "subscribe": "S'abonner",
+    "subscribed": "Abonné",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "country": "Pays",
+    "noLeagues": "Aucun championnat disponible"
+  },
+  "subscriptions": {
+    "title": "Abonnements",
+    "mySubscriptions": "Mes abonnements",
+    "active": "Actif",
+    "canceled": "Annulé",
+    "cancel": "Annuler l'abonnement",
+    "cancelConfirm": "Êtes-vous sûr de vouloir annuler cet abonnement ?",
+    "noSubscriptions": "Vous n'avez aucun abonnement actif",
+    "renewsOn": "Se renouvelle le"
+  },
+  "matches": {
+    "title": "Matchs",
+    "upcoming": "À venir",
+    "live": "En direct",
+    "finished": "Terminé",
+    "vs": "contre",
+    "date": "Date",
+    "time": "Heure",
+    "score": "Score"
+  }
+}

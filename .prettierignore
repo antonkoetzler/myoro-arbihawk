@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+build
+dist
+*.min.js
+*.min.css
+coverage
+.env
+.env.local
+.env.production
+.env.development
+drizzle
+

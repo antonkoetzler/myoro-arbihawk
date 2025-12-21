@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Accedi",
+    "signup": "Registrati",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Invia",
+    "loading": "Caricamento...",
+    "noAccount": "Non hai un account? Registrati",
+    "hasAccount": "Hai già un account? Accedi",
+    "userExists": "L'utente esiste già",
+    "invalidCredentials": "Credenziali non valide"
+  },
+  "greeting": {
+    "hello": "Ciao Mondo"
+  },
+  "errors": {
+    "generic": "Si è verificato un errore"
+  },
+  "leagues": {
+    "title": "Campionati",
+    "browse": "Sfoglia Campionati",
+    "subscribe": "Abbonati",
+    "subscribed": "Abbonato",
+    "active": "Attivo",
+    "inactive": "Inattivo",
+    "country": "Paese",
+    "noLeagues": "Nessun campionato disponibile"
+  },
+  "subscriptions": {
+    "title": "Abbonamenti",
+    "mySubscriptions": "I Miei Abbonamenti",
+    "active": "Attivo",
+    "canceled": "Annullato",
+    "cancel": "Annulla Abbonamento",
+    "cancelConfirm": "Sei sicuro di voler annullare questo abbonamento?",
+    "noSubscriptions": "Non hai abbonamenti attivi",
+    "renewsOn": "Si rinnova il"
+  },
+  "matches": {
+    "title": "Partite",
+    "upcoming": "In arrivo",
+    "live": "In diretta",
+    "finished": "Terminata",
+    "vs": "contro",
+    "date": "Data",
+    "time": "Ora",
+    "score": "Punteggio"
+  }
+}

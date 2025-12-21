@@ -1,0 +1,50 @@
+{
+  "auth": {
+    "login": "Entrar",
+    "signup": "Cadastrar",
+    "email": "E-mail",
+    "password": "Senha",
+    "submit": "Enviar",
+    "loading": "Carregando...",
+    "noAccount": "Não tem uma conta? Cadastre-se",
+    "hasAccount": "Já tem uma conta? Entre",
+    "userExists": "Usuário já existe",
+    "invalidCredentials": "Credenciais inválidas"
+  },
+  "greeting": {
+    "hello": "Olá Mundo"
+  },
+  "errors": {
+    "generic": "Ocorreu um erro"
+  },
+  "leagues": {
+    "title": "Ligas",
+    "browse": "Navegar Ligas",
+    "subscribe": "Assinar",
+    "subscribed": "Assinado",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "country": "País",
+    "noLeagues": "Nenhuma liga disponível"
+  },
+  "subscriptions": {
+    "title": "Assinaturas",
+    "mySubscriptions": "Minhas Assinaturas",
+    "active": "Ativo",
+    "canceled": "Cancelado",
+    "cancel": "Cancelar Assinatura",
+    "cancelConfirm": "Tem certeza de que deseja cancelar esta assinatura?",
+    "noSubscriptions": "Você não tem assinaturas ativas",
+    "renewsOn": "Renova em"
+  },
+  "matches": {
+    "title": "Partidas",
+    "upcoming": "Próximas",
+    "live": "Ao Vivo",
+    "finished": "Finalizadas",
+    "vs": "vs",
+    "date": "Data",
+    "time": "Hora",
+    "score": "Placar"
+  }
+}
