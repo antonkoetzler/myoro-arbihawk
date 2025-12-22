@@ -81,12 +81,17 @@ export type TranslationPath =
   | 'auth.password'
   | 'auth.submit'
   | 'auth.loading'
+  | 'auth.logout'
   | 'auth.noAccount'
   | 'auth.hasAccount'
   | 'auth.userExists'
   | 'auth.invalidCredentials'
   | 'greeting.hello'
   | 'errors.generic'
+  | 'theme.light'
+  | 'theme.dark'
+  | 'theme.system'
+  | 'theme.title'
   | 'leagues.title'
   | 'leagues.browse'
   | 'leagues.subscribe'
@@ -110,7 +115,43 @@ export type TranslationPath =
   | 'matches.vs'
   | 'matches.date'
   | 'matches.time'
-  | 'matches.score';
+  | 'matches.score'
+  | 'matches.all'
+  | 'matches.noMatchesFound'
+  | 'matches.tbd'
+  | 'matchDetail.statistics'
+  | 'matchDetail.possession'
+  | 'matchDetail.shots'
+  | 'matchDetail.shotsOnTarget'
+  | 'matchDetail.corners'
+  | 'matchDetail.bettingRecommendations'
+  | 'matchDetail.loadingRecommendations'
+  | 'matchDetail.noRecommendations'
+  | 'matchDetail.matchNotFound'
+  | 'standings.leagueTable'
+  | 'standings.noData'
+  | 'standings.position'
+  | 'standings.team'
+  | 'standings.played'
+  | 'standings.wins'
+  | 'standings.draws'
+  | 'standings.losses'
+  | 'standings.goalDifference'
+  | 'standings.points'
+  | 'common.leagueNotFound'
+  | 'common.reloadPage'
+  | 'common.goHome'
+  | 'common.somethingWentWrong'
+  | 'common.unexpectedError'
+  | 'stats.title'
+  | 'stats.noTeams'
+  | 'stats.wins'
+  | 'stats.draws'
+  | 'stats.losses'
+  | 'stats.totalGoals'
+  | 'stats.totalShots'
+  | 'stats.shotsOnTarget'
+  | 'stats.goalsPerMatch';
 
 /**
  * Gets a translation value by path.
@@ -123,7 +164,21 @@ export function t(
   translations: TranslationKeys,
   path: TranslationPath
 ): string {
-  const [section, key] = path.split('.') as [keyof TranslationKeys, string];
-  const sectionObj = translations[section] as Record<string, string>;
-  return sectionObj[key] || path;
+  const parts = path.split('.');
+  if (parts.length !== 2) {
+    return path;
+  }
+  const [section, key] = parts;
+  if (!(section in translations)) {
+    return path;
+  }
+  const sectionObj = translations[section as keyof TranslationKeys];
+  if (
+    typeof sectionObj === 'object' &&
+    sectionObj !== null &&
+    key in sectionObj
+  ) {
+    return String(sectionObj[key as keyof typeof sectionObj]);
+  }
+  return path;
 }

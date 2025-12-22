@@ -1,54 +1,44 @@
 'use client';
 
-import { useState } from 'react';
-import { trpc } from '@/utils/trpc';
-import { useAuthStore } from '@/stores/auth-store';
+import { useState, useTransition } from 'react';
 import { useTranslations } from '@/hooks/use-translations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { signupAction, loginAction } from '@/app/actions/auth';
 
 /**
  * Home page component with authentication form.
  *
- * Handles login and signup with Zustand state management and shadcn UI components.
+ * Client component for login/signup interactivity.
+ * Uses Server Actions for authentication.
  */
 export default function Home() {
   const { t } = useTranslations();
-  const { token, setToken } = useAuthStore();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  const signup = trpc.auth.signup.useMutation();
-  const login = trpc.auth.login.useMutation();
-  const { data: helloData } = trpc.hello.useQuery(undefined, {
-    enabled: !!token,
-  });
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const result = isLogin
-        ? await login.mutateAsync({ email, password })
-        : await signup.mutateAsync({ email, password });
+    setError(null);
 
-      if (result.token) {
-        setToken(result.token);
+    startTransition(async () => {
+      try {
+        if (isLogin) {
+          await loginAction(email, password);
+        } else {
+          await signupAction(email, password);
+        }
+        // Redirect happens in the server action
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
       }
-    } catch (error) {
-      console.error('Auth error:', error);
-    }
+    });
   };
-
-  if (token && helloData) {
-    return (
-      <div className='flex items-center justify-center min-h-screen'>
-        <h1 className='text-4xl font-bold'>{t('greeting.hello')}</h1>
-      </div>
-    );
-  }
 
   return (
     <div className='flex items-center justify-center min-h-screen p-4'>
@@ -81,12 +71,8 @@ export default function Home() {
                 minLength={8}
               />
             </div>
-            <Button
-              type='submit'
-              disabled={signup.isPending || login.isPending}
-              className='w-full'
-            >
-              {signup.isPending || login.isPending
+            <Button type='submit' disabled={isPending} className='w-full'>
+              {isPending
                 ? t('auth.loading')
                 : isLogin
                   ? t('auth.login')
@@ -96,10 +82,8 @@ export default function Home() {
           <Button onClick={() => setIsLogin(!isLogin)} className='w-full mt-4'>
             {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
           </Button>
-          {(signup.error || login.error) && (
-            <div className='text-red-600 text-sm text-center mt-4'>
-              {signup.error?.message || login.error?.message}
-            </div>
+          {error && (
+            <div className='text-red-600 text-sm text-center mt-4'>{error}</div>
           )}
         </CardContent>
       </Card>

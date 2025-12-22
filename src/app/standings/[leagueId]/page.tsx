@@ -1,59 +1,54 @@
-'use client';
+import { redirect } from 'next/navigation';
+import { getUserId } from '@/lib/auth-server';
+import { getLeagueStandings } from '@/lib/data-server';
+import { db } from '@/db';
+import { leagues } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { StandingsClient } from './standings-client';
+import { z } from 'zod';
 
-import { useParams, useRouter } from 'next/navigation';
-import { trpc } from '@/utils/trpc';
-import { useTranslations } from '@/hooks/use-translations';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuthStore } from '@/stores/auth-store';
-import { useEffect } from 'react';
+const standingsParamsSchema = z.object({
+  leagueId: z.string().uuid(),
+});
 
 /**
- * League standings page.
+ * League standings page (Server Component).
  *
- * Displays league table/standings.
+ * Fetches league and standings data on the server.
  */
-export default function StandingsPage() {
-  const params = useParams();
-  const router = useRouter();
-  const { t } = useTranslations();
-  const { token } = useAuthStore();
-  const leagueId = params.leagueId as string;
+export default async function StandingsPage({
+  params,
+}: {
+  params: { leagueId: string };
+}) {
+  const userId = await getUserId();
 
-  const { data: league } = trpc.leagues.getById.useQuery(
-    { leagueId },
-    { enabled: !!token && !!leagueId }
-  );
-
-  useEffect(() => {
-    if (!token) {
-      router.push('/');
-    }
-  }, [token, router]);
-
-  if (!token) {
-    return null;
+  if (!userId) {
+    redirect('/');
   }
 
-  // TODO: Fetch standings from API
-  // For now, display placeholder
+  const parsed = standingsParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    redirect('/');
+  }
 
-  return (
-    <div className='container mx-auto py-8'>
-      <h1 className='text-4xl font-bold mb-8'>
-        {league?.name || 'Standings'} - {t('leagues.title')}
-      </h1>
+  const [league] = await db
+    .select()
+    .from(leagues)
+    .where(eq(leagues.id, parsed.data.leagueId))
+    .limit(1);
 
-      <Card>
-        <CardHeader>
-          <CardTitle>League Table</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className='text-muted-foreground'>
-            Standings data will be displayed here once API integration is
-            complete.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  if (!league) {
+    redirect('/');
+  }
+
+  let standings = [];
+  try {
+    standings = await getLeagueStandings(userId, parsed.data.leagueId);
+  } catch {
+    // User doesn't have access
+    standings = [];
+  }
+
+  return <StandingsClient league={league} standings={standings} />;
 }

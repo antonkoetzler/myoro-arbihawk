@@ -14,9 +14,12 @@
 
 7. Use shadcn/ui components instead of raw HTML elements when possible
 
-8. Use Zustand for state management, not React useState for complex state
+8. Use Zustand for state management, not React `useState` for complex state
 
 9. All user-facing text must be added to the i18n system with translations for all supported languages
 
-10. Follow TypeScript best practices: use proper types, avoid `any`, add JSDoc comments for public APIs
+10. Follow TypeScript best practices: use proper types, avoid `any` unless it is actually practical and best practice, add JSDoc comments for public APIs
 
+11. Always make sure that you run `bun run lint`, fix any linting errors, then `bun run format`, after you do any task to make sure that there are no linting or formatting problems
+
+12. Always focus on creating scalable, type-safe, and anti-fragile code. Never create bandaid or workaround code unless specifically permitted

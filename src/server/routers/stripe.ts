@@ -5,6 +5,7 @@ import { createCheckoutSession } from '@/lib/stripe';
 import { db } from '@/db';
 import { leagues, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { env } from '@/lib/env';
 
 /**
  * Zod schema for creating checkout session.
@@ -67,9 +68,9 @@ export const stripeRouter = router({
         });
       }
 
-      // TODO: Get Stripe price ID from league or configuration
-      // For now, using placeholder - will need to store price ID per league
-      const priceId = process.env.STRIPE_PRICE_ID || '';
+      // Get Stripe price ID from environment or league configuration
+      // In production, you might want to store price IDs per league in the database
+      const priceId = env.STRIPE_PRICE_ID || '';
 
       if (!priceId) {
         throw new TRPCError({

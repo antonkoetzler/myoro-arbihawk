@@ -3,8 +3,11 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc';
 import { db } from '@/db';
 import { matches, teams, matchStats } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
-import { hasActiveSubscription } from '@/lib/subscription-check';
+import { eq, desc, and, inArray } from 'drizzle-orm';
+import {
+  hasActiveSubscription,
+  getUserSubscriptions,
+} from '@/lib/subscription-check';
 
 /**
  * Zod schema for getting matches.
@@ -50,16 +53,16 @@ export const matchesRouter = router({
         });
       }
 
-      let query = db
-        .select()
-        .from(matches)
-        .where(eq(matches.leagueId, input.leagueId));
-
+      const conditions = [eq(matches.leagueId, input.leagueId)];
       if (input.status) {
-        query = query.where(eq(matches.status, input.status));
+        conditions.push(eq(matches.status, input.status));
       }
 
-      return query.orderBy(desc(matches.date));
+      return db
+        .select()
+        .from(matches)
+        .where(and(...conditions))
+        .orderBy(desc(matches.date));
     }),
 
   /**
@@ -140,12 +143,21 @@ export const matchesRouter = router({
       throw new TRPCError({ code: 'UNAUTHORIZED' });
     }
 
-    // TODO: Filter by user's subscribed leagues
-    // For now, return all live matches
+    // Get user's subscribed leagues
+    const userSubscriptions = await getUserSubscriptions(ctx.userId);
+
+    if (!userSubscriptions || userSubscriptions.length === 0) {
+      return [];
+    }
+
+    const leagueIds = userSubscriptions.map((sub) => sub.league.id);
+
     return db
       .select()
       .from(matches)
-      .where(eq(matches.status, 'live'))
+      .where(
+        and(eq(matches.status, 'live'), inArray(matches.leagueId, leagueIds))
+      )
       .orderBy(desc(matches.date));
   }),
 });

@@ -12,10 +12,17 @@ export type TranslationKeys = {
     password: string;
     submit: string;
     loading: string;
+    logout: string;
     noAccount: string;
     hasAccount: string;
     userExists: string;
     invalidCredentials: string;
+  };
+  theme: {
+    light: string;
+    dark: string;
+    system: string;
+    title: string;
   };
   greeting: {
     hello: string;
@@ -52,6 +59,50 @@ export type TranslationKeys = {
     date: string;
     time: string;
     score: string;
+    all: string;
+    noMatchesFound: string;
+    tbd: string;
+  };
+  matchDetail: {
+    statistics: string;
+    possession: string;
+    shots: string;
+    shotsOnTarget: string;
+    corners: string;
+    bettingRecommendations: string;
+    loadingRecommendations: string;
+    noRecommendations: string;
+    matchNotFound: string;
+  };
+  standings: {
+    leagueTable: string;
+    noData: string;
+    position: string;
+    team: string;
+    played: string;
+    wins: string;
+    draws: string;
+    losses: string;
+    goalDifference: string;
+    points: string;
+  };
+  common: {
+    leagueNotFound: string;
+    reloadPage: string;
+    goHome: string;
+    somethingWentWrong: string;
+    unexpectedError: string;
+  };
+  stats: {
+    title: string;
+    noTeams: string;
+    wins: string;
+    draws: string;
+    losses: string;
+    totalGoals: string;
+    totalShots: string;
+    shotsOnTarget: string;
+    goalsPerMatch: string;
   };
 };
 

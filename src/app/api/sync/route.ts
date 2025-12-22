@@ -4,6 +4,7 @@ import { leagues, teams, matches } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { getLeagues, getTeams, getFixtures } from '@/lib/api-football';
 import { isCacheStale, getCacheInterval } from '@/lib/cache';
+import { env } from '@/lib/env';
 
 /**
  * Background sync job endpoint.
@@ -11,14 +12,21 @@ import { isCacheStale, getCacheInterval } from '@/lib/cache';
  * Syncs data from API-Football to database.
  * Can be called via cron job or manually.
  *
- * TODO: Add authentication/authorization for production
+ * Requires SYNC_JOB_TOKEN in environment for authentication.
  */
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
-    const expectedToken = process.env.SYNC_JOB_TOKEN;
+    const expectedToken = env.SYNC_JOB_TOKEN;
 
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    if (!expectedToken) {
+      return NextResponse.json(
+        { error: 'Sync job not configured' },
+        { status: 500 }
+      );
+    }
+
+    if (authHeader !== `Bearer ${expectedToken}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -53,7 +61,7 @@ export async function POST(req: Request) {
         }
       }
     } catch (error) {
-      console.error('Error syncing leagues:', error);
+      console.error('[POST /api/sync]: Error syncing leagues:', error);
     }
 
     // Sync teams and matches for active leagues
@@ -151,7 +159,10 @@ export async function POST(req: Request) {
           }
         }
       } catch (error) {
-        console.error(`Error syncing league ${league.id}:`, error);
+        console.error(
+          `[POST /api/sync]: Error syncing league ${league.id}:`,
+          error
+        );
       }
     }
 
@@ -160,7 +171,7 @@ export async function POST(req: Request) {
       results: syncResults,
     });
   } catch (error) {
-    console.error('Sync job error:', error);
+    console.error('[POST /api/sync]: Sync job error:', error);
     return NextResponse.json(
       {
         error: 'Sync failed',

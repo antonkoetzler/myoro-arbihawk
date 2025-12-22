@@ -21,6 +21,7 @@
     "setup": "bun run db:setup && bun run db:migrate && bun run db:seed"
   },
   "dependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@tanstack/react-query": "^5.90.0",
@@ -32,6 +33,7 @@
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.1",
     "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.562.0",
     "next": "^14.2.0",
     "next-themes": "^0.4.6",
     "postgres": "^3.4.7",

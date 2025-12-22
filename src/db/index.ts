@@ -1,16 +1,15 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
+import { env } from '@/lib/env';
 
 /**
  * PostgreSQL connection string.
  *
- * Falls back to default local connection if DATABASE_URL env var is not set.
- * For Docker Compose, use: postgresql://postgres:postgres@localhost:5432/myoro_arbihawk
+ * Uses validated environment variable from env.ts.
+ * Falls back to default local connection if not set.
  */
-const connectionString =
-  process.env.DATABASE_URL ||
-  'postgresql://postgres:postgres@localhost:5432/myoro_arbihawk';
+const connectionString = env.DATABASE_URL;
 
 /**
  * PostgreSQL client instance.

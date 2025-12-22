@@ -6,6 +6,7 @@
     "password": "비밀번호",
     "submit": "제출",
     "loading": "로딩 중...",
+    "logout": "로그아웃",
     "noAccount": "계정이 없으신가요? 회원가입",
     "hasAccount": "이미 계정이 있으신가요? 로그인",
     "userExists": "사용자가 이미 존재합니다",
@@ -45,6 +46,45 @@
     "vs": "대",
     "date": "날짜",
     "time": "시간",
-    "score": "점수"
+    "score": "점수",
+    "all": "All",
+    "noMatchesFound": "No matches found",
+    "tbd": "TBD"
+  },
+  "theme": {
+    "light": "라이트",
+    "dark": "다크",
+    "system": "시스템",
+    "title": "Theme"
+  },
+  "matchDetail": {
+    "statistics": "Statistics",
+    "possession": "Possession",
+    "shots": "Shots",
+    "shotsOnTarget": "Shots on Target",
+    "corners": "Corners",
+    "bettingRecommendations": "Betting Recommendations",
+    "loadingRecommendations": "Loading recommendations...",
+    "noRecommendations": "No betting recommendations available yet.",
+    "matchNotFound": "Match not found"
+  },
+  "standings": {
+    "leagueTable": "League Table",
+    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
+    "position": "Pos",
+    "team": "Team",
+    "played": "P",
+    "wins": "W",
+    "draws": "D",
+    "losses": "L",
+    "goalDifference": "GD",
+    "points": "Pts"
+  },
+  "common": {
+    "leagueNotFound": "League not found",
+    "reloadPage": "Reload Page",
+    "goHome": "Go Home",
+    "somethingWentWrong": "Something went wrong",
+    "unexpectedError": "An unexpected error occurred"
   }
 }

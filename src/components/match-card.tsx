@@ -11,6 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { useTranslations } from '@/hooks/use-translations';
 import Link from 'next/link';
+import { routes } from '@/lib/routes';
+import { matches, teams } from '@/db/schema';
+
+type Match = typeof matches.$inferSelect;
+type Team = typeof teams.$inferSelect;
 
 /**
  * Match card component.
@@ -22,15 +27,9 @@ export function MatchCard({
   homeTeam,
   awayTeam,
 }: {
-  match: {
-    id: string;
-    date: Date;
-    status: 'scheduled' | 'live' | 'finished' | 'postponed' | 'canceled';
-    homeScore: number | null;
-    awayScore: number | null;
-  };
-  homeTeam: { name: string; logoUrl: string | null } | null;
-  awayTeam: { name: string; logoUrl: string | null } | null;
+  match: Match;
+  homeTeam: Team | null;
+  awayTeam: Team | null;
 }) {
   const { t } = useTranslations();
 
@@ -48,7 +47,7 @@ export function MatchCard({
   };
 
   return (
-    <Link href={`/matches/${match.id}`}>
+    <Link href={routes.match(match.id)}>
       <Card className='hover:shadow-lg transition-shadow cursor-pointer'>
         <CardHeader>
           <div className='flex items-center justify-between'>

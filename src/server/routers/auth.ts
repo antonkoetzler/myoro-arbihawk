@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createUser, findUserByEmail, verifyPassword } from '../../lib/auth';
 import { createToken } from '../../lib/jwt';
 import { publicProcedure, router } from '../trpc';
+import { cookies } from 'next/headers';
 
 /**
  * Zod schema for user signup input validation.
@@ -59,8 +60,17 @@ export const authRouter = router({
     const user = await createUser(input.email, input.password);
     const token = createToken(user.id);
 
+    // Set auth token in httpOnly cookie
+    const cookieStore = await cookies();
+    cookieStore.set('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
+
     return {
-      token,
       user: {
         id: user.id,
         email: user.email,
@@ -106,12 +116,32 @@ export const authRouter = router({
 
     const token = createToken(user.id);
 
+    // Set auth token in httpOnly cookie
+    const cookieStore = await cookies();
+    cookieStore.set('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
+
     return {
-      token,
       user: {
         id: user.id,
         email: user.email,
       },
     };
+  }),
+
+  /**
+   * Logs out the current user.
+   *
+   * Clears the auth token cookie.
+   */
+  logout: publicProcedure.mutation(async () => {
+    const cookieStore = await cookies();
+    cookieStore.delete('auth-token');
+    return { success: true };
   }),
 });

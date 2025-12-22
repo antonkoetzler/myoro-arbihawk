@@ -1,12 +1,15 @@
 import jwt from 'jsonwebtoken';
+import { env } from '@/lib/env';
 
 /**
  * Secret key for signing JWT tokens.
- * Falls back to insecure default if not set in environment.
+ *
+ * Uses validated environment variable from env.ts.
+ * Falls back to insecure default if not set (development only).
  *
  * @remarks Always set JWT_SECRET in production!
  */
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const JWT_SECRET = env.JWT_SECRET;
 
 /**
  * Token expiration time.
@@ -54,8 +57,15 @@ export const createToken = (userId: string): string => {
  */
 export const verifyToken = (token: string): { userId: string } | null => {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
-    return payload;
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      'userId' in payload
+    ) {
+      return { userId: String(payload.userId) };
+    }
+    return null;
   } catch {
     return null;
   }

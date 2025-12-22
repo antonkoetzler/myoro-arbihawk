@@ -1,15 +1,16 @@
 import Stripe from 'stripe';
+import { env } from '@/lib/env';
 
 /**
  * Stripe client instance.
  *
- * Initialized with secret key from environment variables.
+ * Initialized with secret key from validated environment variables.
  * Used for creating checkout sessions, managing subscriptions, and handling webhooks.
  *
  * Returns null if STRIPE_SECRET_KEY is not configured (for development).
  */
-export const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+export const stripe = env.STRIPE_SECRET_KEY
+  ? new Stripe(env.STRIPE_SECRET_KEY, {
       apiVersion: '2025-12-15.clover',
       typescript: true,
     })
@@ -46,12 +47,8 @@ export async function createCheckoutSession(
         quantity: 1,
       },
     ],
-    success_url: `${
-      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    }/subscriptions?success=true`,
-    cancel_url: `${
-      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    }/leagues?canceled=true`,
+    success_url: `${env.NEXT_PUBLIC_APP_URL}/subscriptions?success=true`,
+    cancel_url: `${env.NEXT_PUBLIC_APP_URL}/leagues?canceled=true`,
     metadata: {
       userId,
       leagueId,

@@ -6,6 +6,7 @@
     "password": "Senha",
     "submit": "Enviar",
     "loading": "Carregando...",
+    "logout": "Sair",
     "noAccount": "Não tem uma conta? Cadastre-se",
     "hasAccount": "Já tem uma conta? Entre",
     "userExists": "Usuário já existe",
@@ -45,6 +46,45 @@
     "vs": "vs",
     "date": "Data",
     "time": "Hora",
-    "score": "Placar"
+    "score": "Placar",
+    "all": "All",
+    "noMatchesFound": "No matches found",
+    "tbd": "TBD"
+  },
+  "theme": {
+    "light": "Claro",
+    "dark": "Escuro",
+    "system": "Sistema",
+    "title": "Theme"
+  },
+  "matchDetail": {
+    "statistics": "Statistics",
+    "possession": "Possession",
+    "shots": "Shots",
+    "shotsOnTarget": "Shots on Target",
+    "corners": "Corners",
+    "bettingRecommendations": "Betting Recommendations",
+    "loadingRecommendations": "Loading recommendations...",
+    "noRecommendations": "No betting recommendations available yet.",
+    "matchNotFound": "Match not found"
+  },
+  "standings": {
+    "leagueTable": "League Table",
+    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
+    "position": "Pos",
+    "team": "Team",
+    "played": "P",
+    "wins": "W",
+    "draws": "D",
+    "losses": "L",
+    "goalDifference": "GD",
+    "points": "Pts"
+  },
+  "common": {
+    "leagueNotFound": "League not found",
+    "reloadPage": "Reload Page",
+    "goHome": "Go Home",
+    "somethingWentWrong": "Something went wrong",
+    "unexpectedError": "An unexpected error occurred"
   }
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { protectedProcedure, publicProcedure, router } from '../trpc';
 import { db } from '@/db';
 import { leagues } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { hasActiveSubscription } from '@/lib/subscription-check';
 
 /**
@@ -36,15 +36,24 @@ export const leaguesRouter = router({
   getAll: publicProcedure
     .input(getLeaguesSchema.optional())
     .query(async ({ input }) => {
-      const query = db.select().from(leagues);
+      const conditions = [];
 
       if (input?.activeOnly) {
-        query.where(eq(leagues.isActive, true));
+        conditions.push(eq(leagues.isActive, true));
       }
 
-      // TODO: Add country filter if needed
+      if (input?.country) {
+        conditions.push(eq(leagues.country, input.country));
+      }
 
-      return query;
+      if (conditions.length === 0) {
+        return db.select().from(leagues);
+      }
+
+      return db
+        .select()
+        .from(leagues)
+        .where(and(...conditions));
     }),
 
   /**

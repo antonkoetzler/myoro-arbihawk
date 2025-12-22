@@ -1,12 +1,12 @@
-import { verifyToken } from '../lib/jwt';
+import { getUserId } from '../lib/auth-server';
 
 /**
  * Creates the tRPC context for each request.
  *
- * Extracts and verifies the JWT token from the Authorization header,
+ * Extracts and verifies the JWT token from cookies,
  * then provides the authenticated user ID to all tRPC procedures.
  *
- * @param headers - HTTP request headers
+ * @param headers - HTTP request headers (unused, kept for compatibility)
  * @returns Context object containing userId (null if not authenticated)
  *
  * @example
@@ -15,15 +15,8 @@ import { verifyToken } from '../lib/jwt';
  * // ctx.userId is either a string (authenticated) or null (not authenticated)
  * ```
  */
-export const createContext = async (headers: Headers) => {
-  const authHeader = headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
-
-  let userId: string | null = null;
-  if (token) {
-    const payload = verifyToken(token);
-    userId = payload?.userId || null;
-  }
+export const createContext = async (_headers: Headers) => {
+  const userId = await getUserId();
 
   return {
     userId,

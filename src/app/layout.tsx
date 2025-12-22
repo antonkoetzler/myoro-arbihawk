@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { Providers } from '@/components/providers';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { Navigation } from '@/components/navigation';
+import { ErrorBoundary } from '@/components/error-boundary';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'myoro-arbihawk',
-  description: 'Next.js app with tRPC',
+  title: 'Myoro Arbihawk',
+  description:
+    'Sports analysis application for soccer leagues with subscription-based access, real-time match statistics, and AI-powered betting recommendations.',
 };
 
 export default function RootLayout({
@@ -16,12 +18,12 @@ export default function RootLayout({
   return (
     <html lang='en' suppressHydrationWarning>
       <body>
-        <Providers>
-          <div className='absolute top-4 right-4'>
-            <ThemeToggle />
-          </div>
-          {children}
-        </Providers>
+        <ErrorBoundary>
+          <Providers>
+            <Navigation />
+            {children}
+          </Providers>
+        </ErrorBoundary>
       </body>
     </html>
   );

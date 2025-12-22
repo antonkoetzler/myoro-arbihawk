@@ -39,13 +39,15 @@ Next.js is both a frontend and backend framework in one:
 
 **Frontend (React Components):**
 
-- `src/app/page.tsx` → Renders in the browser
-- Uses `'use client'` directive for interactivity
-- Calls backend via tRPC
+- `src/app/page.tsx` → Can be server or client component
+- Server components: Fetch data on server, no `'use client'`
+- Client components: Use `'use client'` for interactivity
+- Calls backend via tRPC for mutations and client-side queries
 
-**Backend (API Routes):**
+**Backend (API Routes & Server Components):**
 
 - `src/app/api/trpc/[trpc]/route.ts` → Runs on server only
+- Server components: Fetch data directly from database
 - Handles HTTP requests, database queries, authentication
 - No `'use client'` = server-side code
 
@@ -138,15 +140,15 @@ myoro-arbihawk/
 
 ### Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 14 (App Router) with Server-Side Rendering
 - **Language**: TypeScript
-- **API**: tRPC (type-safe API layer)
+- **API**: tRPC (type-safe API layer for mutations and client-side queries)
 - **Database**: PostgreSQL + Drizzle ORM
-- **Auth**: JWT + bcrypt
+- **Auth**: JWT tokens in httpOnly cookies + bcrypt
 - **Payments**: Stripe (subscriptions)
 - **Sports Data**: RapidAPI (API-Football)
 - **Styling**: Tailwind CSS + shadcn/ui
-- **State**: React Query (via tRPC) + Zustand
+- **State**: React Query (via tRPC) + Zustand (language preference only)
 - **i18n**: Custom typed localization (20 languages)
 - **Package Manager**: Bun
 - **Linting**: ESLint + Prettier
@@ -154,7 +156,37 @@ myoro-arbihawk/
 
 ## Setup
 
-### Quick Start (Recommended - Docker)
+### Environment Configuration
+
+This application uses environment variables for configuration. A template file (`.env.example`) is provided with all required variables.
+
+### Setting Up Environment Variables
+
+1. **Copy the example file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` with your actual values:**
+   - **Database**: Update `DATABASE_URL` if using a different PostgreSQL setup
+   - **JWT**: Change `JWT_SECRET` to a secure random string (minimum 32 characters)
+   - **Stripe**: Add your Stripe API keys from [Stripe Dashboard](https://dashboard.stripe.com/apikeys)
+   - **RapidAPI**: Get your API key from [RapidAPI - API-Football](https://rapidapi.com/api-sports/api/api-football)
+   - **Sync Job**: Generate a secure token for `SYNC_JOB_TOKEN`
+
+3. **Required for Production:**
+   - All Stripe keys (for payment processing)
+   - `RAPIDAPI_KEY` (for fetching match data)
+   - Strong `JWT_SECRET` (at least 32 characters)
+   - `SYNC_JOB_TOKEN` (for background sync jobs)
+
+### Environment Variables Reference
+
+See `.env.example` for a complete list of all environment variables with descriptions.
+
+**Note:** The `.env` file is git-ignored and will not be committed to version control. Always use `.env.example` as a template.
+
+## Quick Start (Recommended - Docker)
 
 1. **Install dependencies:**
 
@@ -328,10 +360,11 @@ The CI pipeline runs on every push and pull request.
 ### Authentication Flow
 
 1. User signs up/logs in → Gets JWT token
-2. Token stored in `localStorage` (via Zustand)
-3. Token sent in `Authorization: Bearer <token>` header
-4. Backend verifies token in `context.ts`
-5. Protected routes check `ctx.userId`
+2. Token stored in httpOnly cookie (server-side, more secure)
+3. Cookie automatically sent with all requests
+4. Backend verifies token from cookies in `context.ts`
+5. Server components check auth using `getUserId()` from cookies
+6. Protected routes check `ctx.userId` in tRPC procedures
 
 ### Database
 
@@ -381,3 +414,13 @@ server. It creates test users for development:
 - Confidence scores (0-100%) for each recommendation
 - Recommendations include: Win/Draw, Over/Under goals
 - Only available to subscribed users
+
+## Server-Side Rendering (SSR)
+
+The application uses a hybrid SSR approach:
+
+- **Server Components**: Fetch data directly from the database for faster initial loads
+- **Client Components**: Handle user interactions and mutations
+- **Authentication**: Server-side using httpOnly cookies (more secure than localStorage)
+
+See `SSR_REFACTOR.md` for detailed documentation on the SSR implementation.

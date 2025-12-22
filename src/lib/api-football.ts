@@ -5,9 +5,10 @@
  * Implements rate limiting and error handling.
  */
 
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '';
-const RAPIDAPI_HOST =
-  process.env.RAPIDAPI_HOST || 'api-football-v1.p.rapidapi.com';
+import { env } from '@/lib/env';
+
+const RAPIDAPI_KEY = env.RAPIDAPI_KEY || '';
+const RAPIDAPI_HOST = env.RAPIDAPI_HOST;
 const BASE_URL = `https://${RAPIDAPI_HOST}`;
 
 /**
@@ -64,8 +65,11 @@ async function apiRequest<T>(
     );
   }
 
-  const data = await response.json();
-  return data.response as T;
+  const data = (await response.json()) as { response: T };
+  if (!('response' in data)) {
+    throw new Error('Invalid API-Football response format');
+  }
+  return data.response;
 }
 
 /**
@@ -137,7 +141,7 @@ export async function getFixturesByDate(date: string) {
  */
 export async function getFixture(fixtureId: number) {
   const results = await apiRequest<unknown[]>('/fixtures', { id: fixtureId });
-  return (results[0] as unknown) || null;
+  return results.length > 0 ? results[0] : null;
 }
 
 /**
@@ -159,7 +163,7 @@ export async function getTeams(leagueId: number, season: number) {
  */
 export async function getTeam(teamId: number) {
   const results = await apiRequest<unknown[]>('/teams', { id: teamId });
-  return (results[0] as unknown) || null;
+  return results.length > 0 ? results[0] : null;
 }
 
 /**

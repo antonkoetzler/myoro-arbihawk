@@ -1,4 +1,4 @@
-import { protectedProcedure, router } from '../trpc';
+import { router } from '../trpc';
 import { authRouter } from './auth';
 import { stripeRouter } from './stripe';
 import { leaguesRouter } from './leagues';
@@ -29,9 +29,6 @@ export const appRouter = router({
   matches: matchesRouter,
   stats: statsRouter,
   betting: bettingRouter,
-  hello: protectedProcedure.query(() => ({
-    greeting: 'Hello World', // TODO: Use i18n when backend supports it
-  })),
 });
 
 /**
