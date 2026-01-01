@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { matches, bettingRecommendations } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 
 /**
  * Betting recommendation engine.
@@ -13,9 +13,15 @@ import { eq, desc } from 'drizzle-orm';
  * Calculates betting recommendations for a match.
  *
  * @param matchId - Match ID
- * @returns Array of betting recommendations
+ * @returns Promise resolving to array of betting recommendations with betType, recommendation, and confidencePercentage
  */
-export async function calculateBettingRecommendations(matchId: string) {
+export async function calculateBettingRecommendations(matchId: string): Promise<
+  Array<{
+    betType: 'win' | 'draw' | 'over' | 'under';
+    recommendation: string;
+    confidencePercentage: number;
+  }>
+> {
   const [match] = await db
     .select()
     .from(matches)
@@ -118,6 +124,10 @@ export async function calculateBettingRecommendations(matchId: string) {
 
 /**
  * Calculates team form from recent matches.
+ *
+ * @param recentMatches - Array of recent match results
+ * @param teamId - Team ID to calculate form for
+ * @returns Object containing wins, draws, losses, avgGoalsScored, avgGoalsConceded, and winRate
  */
 function calculateTeamForm(
   recentMatches: Array<{
@@ -169,6 +179,11 @@ function calculateTeamForm(
 
 /**
  * Calculates win probability for a team.
+ *
+ * @param teamForm - Form statistics for the team
+ * @param opponentForm - Form statistics for the opponent
+ * @param isHome - Whether the team is playing at home
+ * @returns Probability value between 0.1 and 0.9
  */
 function calculateWinProbability(
   teamForm: ReturnType<typeof calculateTeamForm>,

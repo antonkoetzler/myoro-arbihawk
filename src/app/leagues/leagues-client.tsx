@@ -31,7 +31,7 @@ export function LeaguesClient({
       router.push(routes.home);
       return;
     }
-    router.push(routes.subscribe(leagueId));
+    router.push(routes.subscribe(leagueId) as '/subscribe/${string}');
   };
 
   return (

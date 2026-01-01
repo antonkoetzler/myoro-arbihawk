@@ -47,7 +47,7 @@ export function MatchCard({
   };
 
   return (
-    <Link href={routes.match(match.id)}>
+    <Link href={routes.match(match.id) as '/matches/${string}'}>
       <Card className='hover:shadow-lg transition-shadow cursor-pointer'>
         <CardHeader>
           <div className='flex items-center justify-between'>

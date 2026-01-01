@@ -93,7 +93,7 @@ function TeamStatsList({ league }: { league: League }) {
 
   return (
     <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-      {teams.map((team) => (
+      {teams.map((team: { id: string; name: string }) => (
         <TeamStatsCard key={team.id} teamId={team.id} leagueId={league.id} />
       ))}
     </div>

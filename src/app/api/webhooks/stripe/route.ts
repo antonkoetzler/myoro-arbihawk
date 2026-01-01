@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { subscriptions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { env } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 /**
  * Stripe webhook endpoint.
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error(
+    logger.error(
       '[POST /api/webhooks/stripe]: Webhook signature verification failed:',
       error.message
     );
@@ -68,13 +69,19 @@ export async function POST(req: Request) {
               ? subscription.customer
               : subscription.customer.id;
 
+          const currentPeriodEnd =
+            'current_period_end' in subscription &&
+            typeof subscription.current_period_end === 'number'
+              ? new Date(subscription.current_period_end * 1000)
+              : new Date();
+
           await db.insert(subscriptions).values({
             userId: session.metadata?.userId || '',
             leagueId: session.metadata?.leagueId || '',
             stripeSubscriptionId: subscription.id,
             stripeCustomerId: customerId,
             status: subscription.status === 'active' ? 'active' : 'incomplete',
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            currentPeriodEnd,
           });
         }
         break;
@@ -82,6 +89,11 @@ export async function POST(req: Request) {
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object;
+        const currentPeriodEnd =
+          'current_period_end' in subscription &&
+          typeof subscription.current_period_end === 'number'
+            ? new Date(subscription.current_period_end * 1000)
+            : new Date();
 
         await db
           .update(subscriptions)
@@ -94,7 +106,7 @@ export async function POST(req: Request) {
                   : subscription.status === 'past_due'
                     ? 'past_due'
                     : 'incomplete',
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            currentPeriodEnd,
             updatedAt: new Date(),
           })
           .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
@@ -115,14 +127,14 @@ export async function POST(req: Request) {
       }
 
       default:
-        console.log(
+        logger.log(
           `[POST /api/webhooks/stripe]: Unhandled event type: ${event.type}`
         );
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('[POST /api/webhooks/stripe]: Webhook handler error:', error);
+    logger.error('[POST /api/webhooks/stripe]: Webhook handler error:', error);
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }

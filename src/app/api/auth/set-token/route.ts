@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { env } from '@/lib/env';
 
 /**
  * API route to set auth token in httpOnly cookie.
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     cookieStore.set('auth-token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',

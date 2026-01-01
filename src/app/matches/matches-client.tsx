@@ -31,7 +31,9 @@ export function MatchesClient({
   const { t } = useTranslations();
   const router = useRouter();
   const [selectedLeague, setSelectedLeague] = useState(selectedLeagueId);
-  const [status, setStatus] = useState(statusFilter);
+  const [status, setStatus] = useState<
+    'scheduled' | 'live' | 'finished' | undefined
+  >(statusFilter);
 
   // Teams will be fetched via tRPC when needed by MatchCard
 

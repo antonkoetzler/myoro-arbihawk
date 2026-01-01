@@ -4,6 +4,7 @@ import { createUser, findUserByEmail, verifyPassword } from '../../lib/auth';
 import { createToken } from '../../lib/jwt';
 import { publicProcedure, router } from '../trpc';
 import { cookies } from 'next/headers';
+import { env } from '@/lib/env';
 
 /**
  * Zod schema for user signup input validation.
@@ -64,7 +65,7 @@ export const authRouter = router({
     const cookieStore = await cookies();
     cookieStore.set('auth-token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
@@ -120,7 +121,7 @@ export const authRouter = router({
     const cookieStore = await cookies();
     cookieStore.set('auth-token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',

@@ -7,6 +7,97 @@
 
 import { env } from '@/lib/env';
 
+/**
+ * API-Football league type.
+ * Can be returned directly or nested in a 'league' property.
+ */
+export type ApiLeague = {
+  id: number;
+  name: string;
+  country: string;
+  logo?: string;
+  flag?: string;
+  season?: number;
+  // Allow nested structure from API
+  league?: ApiLeague;
+  // Allow additional properties
+  [key: string]: unknown;
+};
+
+/**
+ * API-Football team type.
+ * Can be returned directly or nested in a 'team' property.
+ */
+export type ApiTeam = {
+  id: number;
+  name: string;
+  logo?: string;
+  code?: string;
+  // Allow nested structure from API
+  team?: ApiTeam;
+  // Allow additional properties
+  [key: string]: unknown;
+};
+
+/**
+ * API-Football fixture/match type.
+ */
+export type ApiFixture = {
+  fixture?: {
+    id: number;
+    date: string;
+    status?: {
+      short?: string;
+      long?: string;
+    };
+    goals?: {
+      home?: number;
+      away?: number;
+    };
+  };
+  teams?: {
+    home?: ApiTeam;
+    away?: ApiTeam;
+  };
+  league?: ApiLeague;
+  goals?: {
+    home?: number;
+    away?: number;
+  };
+  // Allow additional properties from API
+  [key: string]: unknown;
+};
+
+/**
+ * API-Football standings type.
+ */
+export type ApiStandings = {
+  league?: {
+    id: number;
+    name: string;
+    country: string;
+    standings?: Array<{
+      team: ApiTeam;
+      points: number;
+      goalsDiff: number;
+      group?: string;
+      form?: string;
+      description?: string;
+      all?: {
+        played: number;
+        win: number;
+        draw: number;
+        lose: number;
+        goals: {
+          for: number;
+          against: number;
+        };
+      };
+    }>;
+  };
+  [key: string]: unknown;
+};
+
 const RAPIDAPI_KEY = env.RAPIDAPI_KEY || '';
 const RAPIDAPI_HOST = env.RAPIDAPI_HOST;
 const BASE_URL = `https://${RAPIDAPI_HOST}`;
@@ -77,8 +168,8 @@ async function apiRequest<T>(
  *
  * @returns Array of league objects
  */
-export async function getLeagues() {
-  return apiRequest<unknown[]>('/leagues');
+export async function getLeagues(): Promise<ApiLeague[]> {
+  return apiRequest<ApiLeague[]>('/leagues');
 }
 
 /**
@@ -87,8 +178,10 @@ export async function getLeagues() {
  * @param country - Country name or code
  * @returns Array of league objects
  */
-export async function getLeaguesByCountry(country: string) {
-  return apiRequest<unknown[]>(`/leagues`, { country });
+export async function getLeaguesByCountry(
+  country: string
+): Promise<ApiLeague[]> {
+  return apiRequest<ApiLeague[]>(`/leagues`, { country });
 }
 
 /**
@@ -103,7 +196,7 @@ export async function getFixtures(
   leagueId: number,
   season: number,
   round?: string
-) {
+): Promise<ApiFixture[]> {
   const params: Record<string, string | number> = {
     league: leagueId,
     season,
@@ -111,7 +204,7 @@ export async function getFixtures(
   if (round) {
     params.round = round;
   }
-  return apiRequest<unknown[]>('/fixtures', params);
+  return apiRequest<ApiFixture[]>('/fixtures', params);
 }
 
 /**
@@ -119,8 +212,8 @@ export async function getFixtures(
  *
  * @returns Array of live fixture objects
  */
-export async function getLiveFixtures() {
-  return apiRequest<unknown[]>('/fixtures', { live: 'all' });
+export async function getLiveFixtures(): Promise<ApiFixture[]> {
+  return apiRequest<ApiFixture[]>('/fixtures', { live: 'all' });
 }
 
 /**
@@ -129,19 +222,23 @@ export async function getLiveFixtures() {
  * @param date - Date in YYYY-MM-DD format
  * @returns Array of fixture objects
  */
-export async function getFixturesByDate(date: string) {
-  return apiRequest<unknown[]>('/fixtures', { date });
+export async function getFixturesByDate(date: string): Promise<ApiFixture[]> {
+  return apiRequest<ApiFixture[]>('/fixtures', { date });
 }
 
 /**
  * Gets a specific fixture by ID.
  *
  * @param fixtureId - API-Football fixture ID
- * @returns Fixture object
+ * @returns Fixture object or null if not found
  */
-export async function getFixture(fixtureId: number) {
-  const results = await apiRequest<unknown[]>('/fixtures', { id: fixtureId });
-  return results.length > 0 ? results[0] : null;
+export async function getFixture(
+  fixtureId: number
+): Promise<ApiFixture | null> {
+  const results = await apiRequest<ApiFixture[]>('/fixtures', {
+    id: fixtureId,
+  });
+  return results.length > 0 ? (results[0] ?? null) : null;
 }
 
 /**
@@ -151,30 +248,38 @@ export async function getFixture(fixtureId: number) {
  * @param season - Season year (e.g., 2024)
  * @returns Array of team objects
  */
-export async function getTeams(leagueId: number, season: number) {
-  return apiRequest<unknown[]>('/teams', { league: leagueId, season });
+export async function getTeams(
+  leagueId: number,
+  season: number
+): Promise<ApiTeam[]> {
+  return apiRequest<ApiTeam[]>('/teams', { league: leagueId, season });
 }
 
 /**
  * Gets a specific team by ID.
  *
  * @param teamId - API-Football team ID
- * @returns Team object
+ * @returns Team object or null if not found
  */
-export async function getTeam(teamId: number) {
-  const results = await apiRequest<unknown[]>('/teams', { id: teamId });
-  return results.length > 0 ? results[0] : null;
+export async function getTeam(teamId: number): Promise<ApiTeam | null> {
+  const results = await apiRequest<ApiTeam[]>('/teams', { id: teamId });
+  return results.length > 0 ? (results[0] ?? null) : null;
 }
 
 /**
  * Gets players for a specific team.
  *
  * @param teamId - API-Football team ID
- * @param season - Season year (e.g., 2024)
+ * @param _season - Season year (e.g., 2024) - unused but kept for API compatibility
  * @returns Array of player objects
  */
-export async function getPlayers(teamId: number, _season: number) {
-  return apiRequest<unknown[]>('/players/squads', { team: teamId });
+export async function getPlayers(
+  teamId: number,
+  _season: number
+): Promise<Array<{ id: number; name: string; [key: string]: unknown }>> {
+  return apiRequest<
+    Array<{ id: number; name: string; [key: string]: unknown }>
+  >('/players/squads', { team: teamId });
 }
 
 /**
@@ -183,8 +288,17 @@ export async function getPlayers(teamId: number, _season: number) {
  * @param fixtureId - API-Football fixture ID
  * @returns Statistics object
  */
-export async function getFixtureStatistics(fixtureId: number) {
-  return apiRequest<unknown[]>('/fixtures/statistics', { fixture: fixtureId });
+export async function getFixtureStatistics(
+  fixtureId: number
+): Promise<
+  Array<{ team: ApiTeam; statistics: Array<{ type: string; value: unknown }> }>
+> {
+  return apiRequest<
+    Array<{
+      team: ApiTeam;
+      statistics: Array<{ type: string; value: unknown }>;
+    }>
+  >('/fixtures/statistics', { fixture: fixtureId });
 }
 
 /**
@@ -194,6 +308,9 @@ export async function getFixtureStatistics(fixtureId: number) {
  * @param season - Season year (e.g., 2024)
  * @returns Standings object
  */
-export async function getStandings(leagueId: number, season: number) {
-  return apiRequest<unknown[]>('/standings', { league: leagueId, season });
+export async function getStandings(
+  leagueId: number,
+  season: number
+): Promise<ApiStandings[]> {
+  return apiRequest<ApiStandings[]>('/standings', { league: leagueId, season });
 }

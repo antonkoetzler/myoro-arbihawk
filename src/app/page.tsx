@@ -22,21 +22,23 @@ export default function Home() {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    startTransition(async () => {
-      try {
-        if (isLogin) {
-          await loginAction(email, password);
-        } else {
-          await signupAction(email, password);
+    startTransition(() => {
+      void (async () => {
+        try {
+          if (isLogin) {
+            await loginAction(email, password);
+          } else {
+            await signupAction(email, password);
+          }
+          // Redirect happens in the server action
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'An error occurred');
         }
-        // Redirect happens in the server action
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      }
+      })();
     });
   };
 

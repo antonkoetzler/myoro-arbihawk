@@ -4,6 +4,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { hasActiveSubscription } from '@/lib/subscription-check';
 import { getFixtures } from '@/lib/api-football';
 import type { Match, Team } from '@/db/schema';
+import { logger } from '@/lib/logger';
 
 /**
  * Server-side data fetching utilities.
@@ -27,7 +28,7 @@ async function syncFinishedMatchesForLeague(
 
   // Check if RapidAPI is configured
   if (!env.RAPIDAPI_KEY) {
-    console.warn(
+    logger.warn(
       '[syncFinishedMatchesForLeague]: RAPIDAPI_KEY not configured. Skipping match sync from RapidAPI.'
     );
     return;
@@ -127,14 +128,14 @@ async function syncFinishedMatchesForLeague(
     }
 
     if (finishedCount > 0) {
-      console.log(
+      logger.log(
         `[syncFinishedMatchesForLeague]: ✅ Synced ${finishedCount} finished matches for league ${leagueId}`
       );
     }
   } catch (error) {
     // Log error but don't throw - we can still show matches from DB
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(
+    logger.error(
       `[syncFinishedMatchesForLeague]: ❌ Failed to sync finished matches for league ${leagueId}:`,
       errorMessage
     );
@@ -166,7 +167,7 @@ async function fetchLiveAndScheduledMatchesFromAPI(
     const apiFixtures = await getFixtures(apiLeagueId, currentSeason);
 
     if (!apiFixtures || apiFixtures.length === 0) {
-      console.warn(
+      logger.warn(
         `[fetchLiveAndScheduledMatchesFromAPI]: No fixtures found for league ${apiLeagueId} in season ${currentSeason}`
       );
       return [];
@@ -264,7 +265,7 @@ async function fetchLiveAndScheduledMatchesFromAPI(
     return matches.sort((a, b) => b.date.getTime() - a.date.getTime());
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(
+    logger.error(
       `[fetchLiveAndScheduledMatchesFromAPI]: ❌ Failed to fetch live/scheduled matches from RapidAPI:`,
       errorMessage
     );

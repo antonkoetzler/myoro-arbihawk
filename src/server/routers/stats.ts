@@ -31,9 +31,49 @@ const getStandingsSchema = z.object({
 });
 
 /**
+ * Zod schema for getting teams in a league.
+ */
+const getTeamsSchema = z.object({
+  leagueId: z.string().uuid(),
+});
+
+/**
  * Stats router for fetching statistics.
  */
 export const statsRouter = router({
+  /**
+   * Gets all teams in a league.
+   *
+   * Protected endpoint - requires subscription.
+   *
+   * @param input - League ID
+   * @returns Array of teams
+   * @throws {TRPCError} UNAUTHORIZED if user doesn't have subscription
+   */
+  getTeams: protectedProcedure
+    .input(getTeamsSchema)
+    .query(async ({ input, ctx }) => {
+      if (!ctx.userId) {
+        throw new TRPCError({ code: 'UNAUTHORIZED' });
+      }
+
+      // Check subscription
+      const hasAccess = await hasActiveSubscription(ctx.userId, input.leagueId);
+      if (!hasAccess) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Subscription required',
+        });
+      }
+
+      const leagueTeams = await db
+        .select()
+        .from(teams)
+        .where(eq(teams.leagueId, input.leagueId));
+
+      return leagueTeams;
+    }),
+
   /**
    * Gets team statistics.
    *

@@ -76,3 +76,49 @@ export const env = envSchema.parse({
   SYNC_JOB_TOKEN: process.env.SYNC_JOB_TOKEN,
   NODE_ENV: process.env.NODE_ENV,
 });
+
+/**
+ * Validates optional environment variables and logs warnings in development.
+ *
+ * Called automatically when this module is imported.
+ * Helps developers identify missing optional configuration.
+ */
+if (env.NODE_ENV === 'development') {
+  const missingOptionalVars: string[] = [];
+
+  if (!process.env.RAPIDAPI_KEY) {
+    missingOptionalVars.push('RAPIDAPI_KEY (for API-Football integration)');
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    missingOptionalVars.push('STRIPE_SECRET_KEY (for payments)');
+  }
+
+  if (!process.env.STRIPE_PUBLISHABLE_KEY) {
+    missingOptionalVars.push('STRIPE_PUBLISHABLE_KEY (for payments)');
+  }
+
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    missingOptionalVars.push(
+      'STRIPE_WEBHOOK_SECRET (for webhook verification)'
+    );
+  }
+
+  if (!process.env.STRIPE_PRICE_ID) {
+    missingOptionalVars.push('STRIPE_PRICE_ID (for subscription pricing)');
+  }
+
+  if (!process.env.SYNC_JOB_TOKEN) {
+    missingOptionalVars.push('SYNC_JOB_TOKEN (for background sync jobs)');
+  }
+
+  if (missingOptionalVars.length > 0) {
+    // Use console.warn directly here since logger might not be initialized yet
+    // and this is a one-time startup message
+    console.warn(
+      '[env] ⚠️  Missing optional environment variables (features may be limited):\n' +
+        missingOptionalVars.map((v) => `  - ${v}`).join('\n') +
+        '\n\nThese are optional but may be needed for full functionality.'
+    );
+  }
+}

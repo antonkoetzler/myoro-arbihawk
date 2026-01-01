@@ -6,6 +6,7 @@ import { createToken } from '@/lib/jwt';
 import { redirect } from 'next/navigation';
 import { getUserSubscriptions } from '@/lib/subscription-check';
 import { routes } from '@/lib/routes';
+import { env } from '@/lib/env';
 
 /**
  * Server Action to sign up a new user.
@@ -23,7 +24,7 @@ export async function signupAction(email: string, password: string) {
   const cookieStore = cookies();
   cookieStore.set('auth-token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
@@ -58,7 +59,7 @@ export async function loginAction(email: string, password: string) {
   const cookieStore = await cookies();
   cookieStore.set('auth-token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',

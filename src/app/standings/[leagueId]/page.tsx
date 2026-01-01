@@ -42,7 +42,7 @@ export default async function StandingsPage({
     redirect('/');
   }
 
-  let standings = [];
+  let standings: Awaited<ReturnType<typeof getLeagueStandings>> = [];
   try {
     standings = await getLeagueStandings(userId, parsed.data.leagueId);
   } catch {

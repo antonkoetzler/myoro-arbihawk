@@ -169,7 +169,7 @@ export function t(
     return path;
   }
   const [section, key] = parts;
-  if (!(section in translations)) {
+  if (!section || !key || !(section in translations)) {
     return path;
   }
   const sectionObj = translations[section as keyof TranslationKeys];

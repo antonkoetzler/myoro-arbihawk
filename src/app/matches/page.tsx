@@ -3,6 +3,7 @@ import { getUserId } from '@/lib/auth-server';
 import { getUserSubscriptions } from '@/lib/subscription-check';
 import { getMatchesByLeague } from '@/lib/data-server';
 import { MatchesClient } from './matches-client';
+import { Match } from '@/db/schema';
 
 /**
  * Matches listing page (Server Component).
@@ -39,7 +40,7 @@ export default async function MatchesPage({
     searchParams.leagueId || subscriptions[0]?.league.id || null;
   const statusFilter = searchParams.status as 'scheduled' | 'live' | undefined;
 
-  let matches = [];
+  let matches: Match[] = [];
   if (selectedLeagueId) {
     try {
       // Only fetch live and scheduled matches (finished are excluded)

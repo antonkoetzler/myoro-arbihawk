@@ -2,9 +2,17 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { leagues, teams, matches } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { getLeagues, getTeams, getFixtures } from '@/lib/api-football';
+import {
+  getLeagues,
+  getTeams,
+  getFixtures,
+  type ApiLeague,
+  type ApiTeam,
+  type ApiFixture,
+} from '@/lib/api-football';
 import { isCacheStale, getCacheInterval } from '@/lib/cache';
 import { env } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 /**
  * Background sync job endpoint.
@@ -42,7 +50,11 @@ export async function POST(req: Request) {
     try {
       const apiLeagues = await getLeagues();
       for (const apiLeague of apiLeagues) {
-        const leagueData = apiLeague.league || apiLeague;
+        const leagueData =
+          (apiLeague.league as ApiLeague | undefined) ?? apiLeague;
+        if (!leagueData.id || typeof leagueData.id !== 'number') {
+          continue;
+        }
         const [existing] = await db
           .select()
           .from(leagues)
@@ -51,17 +63,24 @@ export async function POST(req: Request) {
 
         if (!existing) {
           await db.insert(leagues).values({
-            name: leagueData.name,
-            country: leagueData.country || 'Unknown',
+            name:
+              typeof leagueData.name === 'string'
+                ? leagueData.name
+                : 'Unknown League',
+            country:
+              typeof leagueData.country === 'string'
+                ? leagueData.country
+                : 'Unknown',
             apiLeagueId: leagueData.id,
-            logoUrl: leagueData.logo,
+            logoUrl:
+              typeof leagueData.logo === 'string' ? leagueData.logo : undefined,
             isActive: true,
           });
           syncResults.leagues++;
         }
       }
     } catch (error) {
-      console.error('[POST /api/sync]: Error syncing leagues:', error);
+      logger.error('[POST /api/sync]: Error syncing leagues:', error);
     }
 
     // Sync teams and matches for active leagues
@@ -86,7 +105,10 @@ export async function POST(req: Request) {
         // Sync teams
         const apiTeams = await getTeams(league.apiLeagueId, currentSeason);
         for (const apiTeam of apiTeams) {
-          const teamData = apiTeam.team || apiTeam;
+          const teamData = (apiTeam.team as ApiTeam | undefined) ?? apiTeam;
+          if (!teamData.id || typeof teamData.id !== 'number') {
+            continue;
+          }
           const [existing] = await db
             .select()
             .from(teams)
@@ -96,8 +118,12 @@ export async function POST(req: Request) {
           if (!existing) {
             await db.insert(teams).values({
               leagueId: league.id,
-              name: teamData.name,
-              logoUrl: teamData.logo,
+              name:
+                typeof teamData.name === 'string'
+                  ? teamData.name
+                  : 'Unknown Team',
+              logoUrl:
+                typeof teamData.logo === 'string' ? teamData.logo : undefined,
               apiTeamId: teamData.id,
               rawData: teamData,
             });
@@ -111,21 +137,49 @@ export async function POST(req: Request) {
           currentSeason
         );
         for (const apiFixture of apiFixtures) {
-          const fixture = apiFixture.fixture || apiFixture;
-          const homeTeam = apiFixture.teams?.home || {};
-          const awayTeam = apiFixture.teams?.away || {};
+          const fixture =
+            (apiFixture.fixture as ApiFixture['fixture'] | undefined) ??
+            apiFixture;
+          if (!fixture || typeof fixture !== 'object') {
+            continue;
+          }
+          const fixtureId =
+            'id' in fixture && typeof fixture.id === 'number'
+              ? fixture.id
+              : undefined;
+          if (!fixtureId) {
+            continue;
+          }
+          const homeTeam = apiFixture.teams?.home;
+          const awayTeam = apiFixture.teams?.away;
+          const homeTeamId =
+            homeTeam && typeof homeTeam === 'object' && 'id' in homeTeam
+              ? typeof homeTeam.id === 'number'
+                ? homeTeam.id
+                : undefined
+              : undefined;
+          const awayTeamId =
+            awayTeam && typeof awayTeam === 'object' && 'id' in awayTeam
+              ? typeof awayTeam.id === 'number'
+                ? awayTeam.id
+                : undefined
+              : undefined;
+
+          if (!homeTeamId || !awayTeamId) {
+            continue; // Skip if team IDs not found
+          }
 
           // Find team IDs
           const [homeTeamRecord] = await db
             .select()
             .from(teams)
-            .where(eq(teams.apiTeamId, homeTeam.id))
+            .where(eq(teams.apiTeamId, homeTeamId))
             .limit(1);
 
           const [awayTeamRecord] = await db
             .select()
             .from(teams)
-            .where(eq(teams.apiTeamId, awayTeam.id))
+            .where(eq(teams.apiTeamId, awayTeamId))
             .limit(1);
 
           if (!homeTeamRecord || !awayTeamRecord) {
@@ -135,31 +189,57 @@ export async function POST(req: Request) {
           const [existing] = await db
             .select()
             .from(matches)
-            .where(eq(matches.apiMatchId, fixture.id))
+            .where(eq(matches.apiMatchId, fixtureId))
             .limit(1);
 
           if (!existing) {
+            const fixtureDate =
+              'date' in fixture && typeof fixture.date === 'string'
+                ? fixture.date
+                : new Date().toISOString();
+            const status =
+              'status' in fixture &&
+              fixture.status &&
+              typeof fixture.status === 'object' &&
+              'short' in fixture.status &&
+              typeof fixture.status.short === 'string'
+                ? fixture.status.short === 'FT'
+                  ? 'finished'
+                  : fixture.status.short === 'LIVE'
+                    ? 'live'
+                    : 'scheduled'
+                : 'scheduled';
+            const goals =
+              'goals' in fixture &&
+              fixture.goals &&
+              typeof fixture.goals === 'object'
+                ? fixture.goals
+                : undefined;
+            const homeScore =
+              goals && 'home' in goals && typeof goals.home === 'number'
+                ? goals.home
+                : undefined;
+            const awayScore =
+              goals && 'away' in goals && typeof goals.away === 'number'
+                ? goals.away
+                : undefined;
+
             await db.insert(matches).values({
               leagueId: league.id,
               homeTeamId: homeTeamRecord.id,
               awayTeamId: awayTeamRecord.id,
-              date: new Date(fixture.date),
-              status:
-                fixture.status?.short === 'FT'
-                  ? 'finished'
-                  : fixture.status?.short === 'LIVE'
-                    ? 'live'
-                    : 'scheduled',
-              homeScore: fixture.goals?.home,
-              awayScore: fixture.goals?.away,
-              apiMatchId: fixture.id,
+              date: new Date(fixtureDate),
+              status,
+              homeScore,
+              awayScore,
+              apiMatchId: fixtureId,
               rawData: apiFixture,
             });
             syncResults.matches++;
           }
         }
       } catch (error) {
-        console.error(
+        logger.error(
           `[POST /api/sync]: Error syncing league ${league.id}:`,
           error
         );
@@ -171,7 +251,7 @@ export async function POST(req: Request) {
       results: syncResults,
     });
   } catch (error) {
-    console.error('[POST /api/sync]: Sync job error:', error);
+    logger.error('[POST /api/sync]: Sync job error:', error);
     return NextResponse.json(
       {
         error: 'Sync failed',

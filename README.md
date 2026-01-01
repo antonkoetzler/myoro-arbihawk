@@ -163,6 +163,7 @@ This application uses environment variables for configuration. A template file (
 ### Setting Up Environment Variables
 
 1. **Copy the example file:**
+
    ```bash
    cp .env.example .env
    ```
@@ -194,19 +195,20 @@ See `.env.example` for a complete list of all environment variables with descrip
 bun install
 ```
 
-2. **Start PostgreSQL with Docker:**
+1. **Start PostgreSQL with Docker:**
 
 ```bash
 bun run docker:up
 ```
 
 This starts PostgreSQL in a Docker container with default credentials:
+
 - User: `postgres`
 - Password: `postgres`
 - Database: `myoro_arbihawk`
 - Port: `5432`
 
-3. **Set up environment variables:**
+1. **Set up environment variables:**
 
 Create a `.env` file in the project root:
 
@@ -234,18 +236,19 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 SYNC_JOB_TOKEN=your-sync-job-token-here
 ```
 
-4. **Run complete setup (creates DB, runs migrations, seeds data):**
+1. **Run complete setup (creates DB, runs migrations, seeds data):**
 
 ```bash
 bun run setup
 ```
 
 This automatically:
+
 - Creates the database if it doesn't exist
 - Runs migrations to create tables
 - Seeds test users
 
-5. **Start development server:**
+1. **Start development server:**
 
 ```bash
 bun run dev
@@ -263,7 +266,7 @@ If you prefer to use a local PostgreSQL installation:
 bun install
 ```
 
-2. **Set up environment variables:**
+1. **Set up environment variables:**
 
 Create a `.env` file with your PostgreSQL credentials:
 
@@ -272,20 +275,21 @@ DATABASE_URL=postgresql://username:password@localhost:5432/myoro_arbihawk
 # ... other env vars
 ```
 
-3. **Create database and run migrations:**
+1. **Create database and run migrations:**
 
 ```bash
 bun run setup
 ```
 
 Or manually:
+
 ```bash
 bun run db:setup    # Creates database
 bun run db:migrate  # Runs migrations
 bun run db:seed     # Seeds test data
 ```
 
-4. **Start development server:**
+1. **Start development server:**
 
 ```bash
 bun run dev
@@ -304,7 +308,7 @@ The seed script creates two test users:
 
 ### Application Commands
 
-- `bun run dev` - Start Next.js dev server (auto-seeds database)
+- `bun run dev` - Start Next.js dev server
 - `bun run build` - Build for production
 - `bun run start` - Start production server
 - `bun run lint` - Run ESLint
@@ -371,28 +375,33 @@ The CI pipeline runs on every push and pull request.
 - **Schema**: Defined in `src/db/schema.ts`
 - **Migrations**: Generated with `drizzle-kit generate`
 - **Queries**: Use Drizzle ORM throughout the codebase
-- **Seeding**: Automatically runs in development mode
+- **Seeding**: Run explicitly with `bun run db:seed` or via `bun run setup`
 
 ### Database Seeding
 
-The seed script (`src/db/seed.ts`) automatically runs when you start the dev
-server. It creates test users for development:
+The seed script (`src/db/seed/`) creates test data for development:
 
 - **<admin@example.com>** / **admin123**
 - **<user@example.com>** / **user123**
+- Leagues, teams, subscriptions, and sample data
+
+**How to seed:**
+
+1. **Initial setup** (recommended):
+   ```bash
+   bun run setup  # Includes seeding
+   ```
+
+2. **Re-seed manually**:
+   ```bash
+   bun run db:seed
+   ```
 
 **How it works:**
 
-1. Checks if users already exist (safe to run multiple times)
-2. Hashes passwords using bcrypt
-3. Inserts users into the database
-4. Logs progress to console
-
-**Auto-seeding:**
-
-- Runs automatically when `bun run dev` starts
-- Only runs in development mode (not in production)
-- Fails gracefully if database isn't available
+- Checks if data already exists (safe to run multiple times)
+- Idempotent - won't create duplicates
+- Can be run anytime during development
 
 ### Subscriptions
 

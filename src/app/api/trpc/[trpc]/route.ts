@@ -1,26 +1,6 @@
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter } from '@/server/routers/_app';
 import { createContext } from '@/server/context';
-import { env } from '@/lib/env';
-
-// Auto-seed in development (only once per process)
-// Using a more reliable global check to prevent multiple runs
-if (env.NODE_ENV !== 'production') {
-  const globalForSeed = globalThis as typeof globalThis & {
-    __seedRun?: boolean;
-  };
-  if (!globalForSeed.__seedRun) {
-    globalForSeed.__seedRun = true;
-    // Run seed asynchronously without blocking
-    setImmediate(() => {
-      import('@/lib/seed-dev')
-        .then(({ autoSeed }) => autoSeed())
-        .catch(() => {
-          // Ignore errors - seeding is optional
-        });
-    });
-  }
-}
 
 /**
  * Next.js API route handler for tRPC requests.

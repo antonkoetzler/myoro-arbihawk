@@ -66,10 +66,15 @@ export const bettingRouter = router({
         return existing;
       }
 
-      // Calculate new recommendations
-      const recommendations = await calculateBettingRecommendations(
-        input.matchId
-      );
+      // Calculate new recommendations (they're saved to DB by the function)
+      await calculateBettingRecommendations(input.matchId);
+
+      // Fetch the newly created recommendations
+      const recommendations = await db
+        .select()
+        .from(bettingRecommendations)
+        .where(eq(bettingRecommendations.matchId, input.matchId));
+
       return recommendations;
     }),
 });
