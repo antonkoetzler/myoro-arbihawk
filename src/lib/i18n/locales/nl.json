@@ -47,44 +47,55 @@
     "date": "Datum",
     "time": "Tijd",
     "score": "Score",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "Alle",
+    "noMatchesFound": "Geen wedstrijden gevonden",
+    "tbd": "Nader te bepalen"
   },
   "theme": {
     "light": "Licht",
     "dark": "Donker",
     "system": "Systeem",
-    "title": "Theme"
+    "title": "Thema"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "Statistieken",
+    "possession": "Balbezit",
+    "shots": "Schoten",
+    "shotsOnTarget": "Schoten op doel",
+    "corners": "Hoekschoppen",
+    "bettingRecommendations": "Weddenschapsaanbevelingen",
+    "loadingRecommendations": "Aanbevelingen laden...",
+    "noRecommendations": "Nog geen weddenschapsaanbevelingen beschikbaar.",
+    "matchNotFound": "Wedstrijd niet gevonden"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
+    "leagueTable": "Competitiestand",
+    "noData": "Standingsgegevens zijn nog niet beschikbaar. Gegevens worden ingevuld nadat wedstrijden zijn gesynchroniseerd.",
     "position": "Pos",
     "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "played": "W",
+    "wins": "G",
+    "draws": "G",
+    "losses": "V",
+    "goalDifference": "DS",
+    "points": "Ptn"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Competitie niet gevonden",
+    "reloadPage": "Pagina vernieuwen",
+    "goHome": "Naar startpagina",
+    "somethingWentWrong": "Er is iets misgegaan",
+    "unexpectedError": "Er is een onverwachte fout opgetreden"
+  },
+  "stats": {
+    "title": "Statistieken",
+    "noTeams": "Geen teams beschikbaar",
+    "wins": "Overwinningen",
+    "draws": "Gelijkspelen",
+    "losses": "Nederlagen",
+    "totalGoals": "Totaal doelpunten",
+    "totalShots": "Totaal schoten",
+    "shotsOnTarget": "Schoten op doel",
+    "goalsPerMatch": "Doelpunten/Wedstrijd"
   }
 }

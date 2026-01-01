@@ -47,44 +47,55 @@
     "date": "Tanggal",
     "time": "Waktu",
     "score": "Skor",
-    "all": "All",
-    "noMatchesFound": "No matches found",
+    "all": "Semua",
+    "noMatchesFound": "Tidak ada pertandingan ditemukan",
     "tbd": "TBD"
   },
   "theme": {
     "light": "Terang",
     "dark": "Gelap",
     "system": "Sistem",
-    "title": "Theme"
+    "title": "Tema"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "Statistik",
+    "possession": "Penguasaan bola",
+    "shots": "Tembakan",
+    "shotsOnTarget": "Tembakan tepat sasaran",
+    "corners": "Tendangan sudut",
+    "bettingRecommendations": "Rekomendasi taruhan",
+    "loadingRecommendations": "Memuat rekomendasi...",
+    "noRecommendations": "Belum ada rekomendasi taruhan yang tersedia.",
+    "matchNotFound": "Pertandingan tidak ditemukan"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "Tabel Liga",
+    "noData": "Data klasemen belum tersedia. Data akan diisi setelah pertandingan disinkronkan.",
+    "position": "Posisi",
+    "team": "Tim",
+    "played": "M",
+    "wins": "M",
+    "draws": "S",
+    "losses": "K",
+    "goalDifference": "SG",
+    "points": "Poin"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Liga tidak ditemukan",
+    "reloadPage": "Muat ulang halaman",
+    "goHome": "Ke beranda",
+    "somethingWentWrong": "Terjadi kesalahan",
+    "unexpectedError": "Terjadi kesalahan yang tidak terduga"
+  },
+  "stats": {
+    "title": "Statistik",
+    "noTeams": "Tidak ada tim tersedia",
+    "wins": "Menang",
+    "draws": "Seri",
+    "losses": "Kalah",
+    "totalGoals": "Total Gol",
+    "totalShots": "Total Tembakan",
+    "shotsOnTarget": "Tembakan tepat sasaran",
+    "goalsPerMatch": "Gol/Pertandingan"
   }
 }

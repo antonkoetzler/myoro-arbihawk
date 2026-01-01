@@ -47,44 +47,55 @@
     "date": "तारीख",
     "time": "समय",
     "score": "स्कोर",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "सभी",
+    "noMatchesFound": "कोई मैच नहीं मिला",
+    "tbd": "निर्धारित किया जाना है"
   },
   "theme": {
     "light": "हल्का",
     "dark": "गहरा",
     "system": "सिस्टम",
-    "title": "Theme"
+    "title": "थीम"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "आंकड़े",
+    "possession": "कब्जा",
+    "shots": "शॉट्स",
+    "shotsOnTarget": "लक्ष्य पर शॉट्स",
+    "corners": "कॉर्नर",
+    "bettingRecommendations": "बेटिंग सुझाव",
+    "loadingRecommendations": "सुझाव लोड हो रहे हैं...",
+    "noRecommendations": "अभी तक कोई बेटिंग सुझाव उपलब्ध नहीं है।",
+    "matchNotFound": "मैच नहीं मिला"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "लीग टेबल",
+    "noData": "स्टैंडिंग डेटा अभी उपलब्ध नहीं है। मैच सिंक होने के बाद डेटा भरा जाएगा।",
+    "position": "स्थान",
+    "team": "टीम",
+    "played": "खेले",
+    "wins": "जीत",
+    "draws": "ड्रॉ",
+    "losses": "हार",
+    "goalDifference": "गोल अंतर",
+    "points": "अंक"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "लीग नहीं मिली",
+    "reloadPage": "पृष्ठ पुनः लोड करें",
+    "goHome": "होम पर जाएं",
+    "somethingWentWrong": "कुछ गलत हो गया",
+    "unexpectedError": "एक अप्रत्याशित त्रुटि हुई"
+  },
+  "stats": {
+    "title": "आंकड़े",
+    "noTeams": "कोई टीम उपलब्ध नहीं",
+    "wins": "जीत",
+    "draws": "ड्रॉ",
+    "losses": "हार",
+    "totalGoals": "कुल गोल",
+    "totalShots": "कुल शॉट्स",
+    "shotsOnTarget": "लक्ष्य पर शॉट्स",
+    "goalsPerMatch": "गोल/मैच"
   }
 }

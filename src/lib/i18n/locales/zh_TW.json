@@ -47,44 +47,55 @@
     "date": "日期",
     "time": "時間",
     "score": "比分",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "全部",
+    "noMatchesFound": "找不到比賽",
+    "tbd": "待定"
   },
   "theme": {
     "light": "淺色",
     "dark": "深色",
     "system": "系統",
-    "title": "Theme"
+    "title": "主題"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "統計數據",
+    "possession": "控球率",
+    "shots": "射門",
+    "shotsOnTarget": "射正",
+    "corners": "角球",
+    "bettingRecommendations": "投注推薦",
+    "loadingRecommendations": "正在載入推薦...",
+    "noRecommendations": "目前尚無投注推薦。",
+    "matchNotFound": "找不到比賽"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "聯賽積分榜",
+    "noData": "積分榜數據尚不可用。比賽同步後將填入數據。",
+    "position": "排名",
+    "team": "球隊",
+    "played": "場",
+    "wins": "勝",
+    "draws": "平",
+    "losses": "負",
+    "goalDifference": "淨勝球",
+    "points": "積分"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "找不到聯賽",
+    "reloadPage": "重新載入頁面",
+    "goHome": "返回首頁",
+    "somethingWentWrong": "出現問題",
+    "unexpectedError": "發生意外錯誤"
+  },
+  "stats": {
+    "title": "統計數據",
+    "noTeams": "沒有可用球隊",
+    "wins": "勝利",
+    "draws": "平局",
+    "losses": "失敗",
+    "totalGoals": "總進球數",
+    "totalShots": "總射門數",
+    "shotsOnTarget": "射正",
+    "goalsPerMatch": "場均進球"
   }
 }

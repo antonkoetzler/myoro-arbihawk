@@ -47,44 +47,55 @@
     "date": "วันที่",
     "time": "เวลา",
     "score": "คะแนน",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "ทั้งหมด",
+    "noMatchesFound": "ไม่พบการแข่งขัน",
+    "tbd": "รอกำหนด"
   },
   "theme": {
     "light": "สว่าง",
     "dark": "มืด",
     "system": "ระบบ",
-    "title": "Theme"
+    "title": "ธีม"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "สถิติ",
+    "possession": "การครองบอล",
+    "shots": "การยิง",
+    "shotsOnTarget": "การยิงเข้าประตู",
+    "corners": "เตะมุม",
+    "bettingRecommendations": "คำแนะนำการเดิมพัน",
+    "loadingRecommendations": "กำลังโหลดคำแนะนำ...",
+    "noRecommendations": "ยังไม่มีคำแนะนำการเดิมพัน",
+    "matchNotFound": "ไม่พบการแข่งขัน"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "ตารางลีก",
+    "noData": "ข้อมูลตารางยังไม่พร้อมใช้งาน ข้อมูลจะถูกเติมหลังจากซิงค์การแข่งขันแล้ว",
+    "position": "อันดับ",
+    "team": "ทีม",
+    "played": "แข่ง",
+    "wins": "ชนะ",
+    "draws": "เสมอ",
+    "losses": "แพ้",
+    "goalDifference": "ผลต่างประตู",
+    "points": "คะแนน"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "ไม่พบลีก",
+    "reloadPage": "โหลดหน้าใหม่",
+    "goHome": "ไปหน้าแรก",
+    "somethingWentWrong": "เกิดข้อผิดพลาด",
+    "unexpectedError": "เกิดข้อผิดพลาดที่ไม่คาดคิด"
+  },
+  "stats": {
+    "title": "สถิติ",
+    "noTeams": "ไม่มีทีมที่ใช้ได้",
+    "wins": "ชนะ",
+    "draws": "เสมอ",
+    "losses": "แพ้",
+    "totalGoals": "ประตูรวม",
+    "totalShots": "การยิงรวม",
+    "shotsOnTarget": "การยิงเข้าประตู",
+    "goalsPerMatch": "ประตู/นัด"
   }
 }

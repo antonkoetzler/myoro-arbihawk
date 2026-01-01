@@ -47,44 +47,55 @@
     "date": "Дата",
     "time": "Время",
     "score": "Счет",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "Все",
+    "noMatchesFound": "Матчи не найдены",
+    "tbd": "УТВ"
   },
   "theme": {
     "light": "Светлый",
     "dark": "Темный",
     "system": "Система",
-    "title": "Theme"
+    "title": "Тема"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "Статистика",
+    "possession": "Владение мячом",
+    "shots": "Удары",
+    "shotsOnTarget": "Удары в створ",
+    "corners": "Угловые",
+    "bettingRecommendations": "Рекомендации по ставкам",
+    "loadingRecommendations": "Загрузка рекомендаций...",
+    "noRecommendations": "Рекомендации по ставкам пока недоступны.",
+    "matchNotFound": "Матч не найден"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "Турнирная таблица",
+    "noData": "Данные турнирной таблицы пока недоступны. Данные будут заполнены после синхронизации матчей.",
+    "position": "Поз",
+    "team": "Команда",
+    "played": "И",
+    "wins": "В",
+    "draws": "Н",
+    "losses": "П",
+    "goalDifference": "РМ",
+    "points": "О"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Лига не найдена",
+    "reloadPage": "Перезагрузить страницу",
+    "goHome": "На главную",
+    "somethingWentWrong": "Что-то пошло не так",
+    "unexpectedError": "Произошла непредвиденная ошибка"
+  },
+  "stats": {
+    "title": "Статистика",
+    "noTeams": "Нет доступных команд",
+    "wins": "Победы",
+    "draws": "Ничьи",
+    "losses": "Поражения",
+    "totalGoals": "Всего голов",
+    "totalShots": "Всего ударов",
+    "shotsOnTarget": "Удары в створ",
+    "goalsPerMatch": "Голов за матч"
   }
 }

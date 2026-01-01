@@ -16,7 +16,7 @@
     "light": "فاتح",
     "dark": "داكن",
     "system": "النظام",
-    "title": "Theme"
+    "title": "المظهر"
   },
   "greeting": {
     "hello": "مرحبا بالعالم"
@@ -53,38 +53,49 @@
     "date": "التاريخ",
     "time": "الوقت",
     "score": "النتيجة",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "الكل",
+    "noMatchesFound": "لم يتم العثور على مباريات",
+    "tbd": "يحدد لاحقاً"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "الإحصائيات",
+    "possession": "الاستحواذ",
+    "shots": "التسديدات",
+    "shotsOnTarget": "التسديدات على المرمى",
+    "corners": "الركنيات",
+    "bettingRecommendations": "توصيات المراهنة",
+    "loadingRecommendations": "جاري تحميل التوصيات...",
+    "noRecommendations": "لا توجد توصيات للمراهنة متاحة بعد.",
+    "matchNotFound": "لم يتم العثور على المباراة"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "جدول الدوري",
+    "noData": "بيانات الترتيب غير متاحة بعد. سيتم ملء البيانات بعد مزامنة المباريات.",
+    "position": "المركز",
+    "team": "الفريق",
+    "played": "ل",
+    "wins": "ف",
+    "draws": "ت",
+    "losses": "خ",
+    "goalDifference": "ف.أ",
+    "points": "ن"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "لم يتم العثور على الدوري",
+    "reloadPage": "إعادة تحميل الصفحة",
+    "goHome": "الذهاب إلى الصفحة الرئيسية",
+    "somethingWentWrong": "حدث خطأ ما",
+    "unexpectedError": "حدث خطأ غير متوقع"
+  },
+  "stats": {
+    "title": "الإحصائيات",
+    "noTeams": "لا توجد فرق متاحة",
+    "wins": "الفوز",
+    "draws": "التعادل",
+    "losses": "الخسارة",
+    "totalGoals": "إجمالي الأهداف",
+    "totalShots": "إجمالي التسديدات",
+    "shotsOnTarget": "التسديدات على المرمى",
+    "goalsPerMatch": "الأهداف/المباراة"
   }
 }

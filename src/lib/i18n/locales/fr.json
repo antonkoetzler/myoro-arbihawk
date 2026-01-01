@@ -47,44 +47,55 @@
     "date": "Date",
     "time": "Heure",
     "score": "Score",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "Tous",
+    "noMatchesFound": "Aucun match trouvé",
+    "tbd": "À déterminer"
   },
   "theme": {
     "light": "Clair",
     "dark": "Sombre",
     "system": "Système",
-    "title": "Theme"
+    "title": "Thème"
   },
   "matchDetail": {
-    "statistics": "Statistics",
+    "statistics": "Statistiques",
     "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
+    "shots": "Tirs",
+    "shotsOnTarget": "Tirs cadrés",
     "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "bettingRecommendations": "Recommandations de paris",
+    "loadingRecommendations": "Chargement des recommandations...",
+    "noRecommendations": "Aucune recommandation de paris disponible pour le moment.",
+    "matchNotFound": "Match introuvable"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
+    "leagueTable": "Classement",
+    "noData": "Les données du classement ne sont pas encore disponibles. Les données seront remplies après la synchronisation des matchs.",
     "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
+    "team": "Équipe",
+    "played": "J",
+    "wins": "V",
+    "draws": "N",
+    "losses": "D",
+    "goalDifference": "DB",
     "points": "Pts"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Championnat introuvable",
+    "reloadPage": "Recharger la page",
+    "goHome": "Retour à l'accueil",
+    "somethingWentWrong": "Quelque chose s'est mal passé",
+    "unexpectedError": "Une erreur inattendue s'est produite"
+  },
+  "stats": {
+    "title": "Statistiques",
+    "noTeams": "Aucune équipe disponible",
+    "wins": "Victoires",
+    "draws": "Matchs nuls",
+    "losses": "Défaites",
+    "totalGoals": "Buts totaux",
+    "totalShots": "Tirs totaux",
+    "shotsOnTarget": "Tirs cadrés",
+    "goalsPerMatch": "Buts/Match"
   }
 }

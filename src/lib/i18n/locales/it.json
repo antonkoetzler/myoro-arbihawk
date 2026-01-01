@@ -47,44 +47,55 @@
     "date": "Data",
     "time": "Ora",
     "score": "Punteggio",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "Tutti",
+    "noMatchesFound": "Nessuna partita trovata",
+    "tbd": "Da definire"
   },
   "theme": {
     "light": "Chiaro",
     "dark": "Scuro",
     "system": "Sistema",
-    "title": "Theme"
+    "title": "Tema"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "Statistiche",
+    "possession": "Possesso palla",
+    "shots": "Tiri",
+    "shotsOnTarget": "Tiri in porta",
+    "corners": "Calci d'angolo",
+    "bettingRecommendations": "Raccomandazioni di scommesse",
+    "loadingRecommendations": "Caricamento raccomandazioni...",
+    "noRecommendations": "Nessuna raccomandazione di scommesse disponibile ancora.",
+    "matchNotFound": "Partita non trovata"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
+    "leagueTable": "Classifica",
+    "noData": "I dati della classifica non sono ancora disponibili. I dati saranno popolati dopo la sincronizzazione delle partite.",
     "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
+    "team": "Squadra",
+    "played": "G",
+    "wins": "V",
+    "draws": "N",
+    "losses": "P",
+    "goalDifference": "DR",
     "points": "Pts"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Campionato non trovato",
+    "reloadPage": "Ricarica pagina",
+    "goHome": "Vai alla home",
+    "somethingWentWrong": "Qualcosa è andato storto",
+    "unexpectedError": "Si è verificato un errore imprevisto"
+  },
+  "stats": {
+    "title": "Statistiche",
+    "noTeams": "Nessuna squadra disponibile",
+    "wins": "Vittorie",
+    "draws": "Pareggi",
+    "losses": "Sconfitte",
+    "totalGoals": "Gol totali",
+    "totalShots": "Tiri totali",
+    "shotsOnTarget": "Tiri in porta",
+    "goalsPerMatch": "Gol/Partita"
   }
 }

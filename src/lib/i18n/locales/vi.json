@@ -47,44 +47,55 @@
     "date": "Ngày",
     "time": "Giờ",
     "score": "Tỷ số",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "Tất cả",
+    "noMatchesFound": "Không tìm thấy trận đấu",
+    "tbd": "Chưa xác định"
   },
   "theme": {
     "light": "Sáng",
     "dark": "Tối",
     "system": "Hệ thống",
-    "title": "Theme"
+    "title": "Giao diện"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "Thống kê",
+    "possession": "Kiểm soát bóng",
+    "shots": "Cú sút",
+    "shotsOnTarget": "Cú sút trúng đích",
+    "corners": "Phạt góc",
+    "bettingRecommendations": "Gợi ý cá cược",
+    "loadingRecommendations": "Đang tải gợi ý...",
+    "noRecommendations": "Chưa có gợi ý cá cược nào.",
+    "matchNotFound": "Không tìm thấy trận đấu"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "Bảng xếp hạng",
+    "noData": "Dữ liệu bảng xếp hạng chưa có sẵn. Dữ liệu sẽ được điền sau khi đồng bộ các trận đấu.",
+    "position": "Vị trí",
+    "team": "Đội",
+    "played": "Tr",
+    "wins": "T",
+    "draws": "H",
+    "losses": "B",
+    "goalDifference": "HS",
+    "points": "Điểm"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Không tìm thấy giải đấu",
+    "reloadPage": "Tải lại trang",
+    "goHome": "Về trang chủ",
+    "somethingWentWrong": "Đã xảy ra lỗi",
+    "unexpectedError": "Đã xảy ra lỗi không mong muốn"
+  },
+  "stats": {
+    "title": "Thống kê",
+    "noTeams": "Không có đội nào",
+    "wins": "Thắng",
+    "draws": "Hòa",
+    "losses": "Thua",
+    "totalGoals": "Tổng số bàn thắng",
+    "totalShots": "Tổng số cú sút",
+    "shotsOnTarget": "Cú sút trúng đích",
+    "goalsPerMatch": "Bàn thắng/Trận"
   }
 }

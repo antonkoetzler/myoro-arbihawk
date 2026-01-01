@@ -47,44 +47,55 @@
     "date": "Tarih",
     "time": "Saat",
     "score": "Skor",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "Tümü",
+    "noMatchesFound": "Maç bulunamadı",
+    "tbd": "Belirlenecek"
   },
   "theme": {
     "light": "Açık",
     "dark": "Koyu",
     "system": "Sistem",
-    "title": "Theme"
+    "title": "Tema"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "İstatistikler",
+    "possession": "Top kontrolü",
+    "shots": "Şutlar",
+    "shotsOnTarget": "İsabetli şutlar",
+    "corners": "Kornerler",
+    "bettingRecommendations": "Bahis önerileri",
+    "loadingRecommendations": "Öneriler yükleniyor...",
+    "noRecommendations": "Henüz bahis önerisi mevcut değil.",
+    "matchNotFound": "Maç bulunamadı"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "Lig Tablosu",
+    "noData": "Puan durumu verileri henüz mevcut değil. Maçlar senkronize edildikten sonra veriler doldurulacak.",
+    "position": "Sıra",
+    "team": "Takım",
+    "played": "O",
+    "wins": "G",
+    "draws": "B",
+    "losses": "M",
+    "goalDifference": "AG",
+    "points": "Puan"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "Lig bulunamadı",
+    "reloadPage": "Sayfayı yenile",
+    "goHome": "Ana sayfaya git",
+    "somethingWentWrong": "Bir şeyler yanlış gitti",
+    "unexpectedError": "Beklenmeyen bir hata oluştu"
+  },
+  "stats": {
+    "title": "İstatistikler",
+    "noTeams": "Mevcut takım yok",
+    "wins": "Galibiyetler",
+    "draws": "Beraberlikler",
+    "losses": "Yenilgiler",
+    "totalGoals": "Toplam Gol",
+    "totalShots": "Toplam Şut",
+    "shotsOnTarget": "İsabetli şutlar",
+    "goalsPerMatch": "Gol/Maç"
   }
 }

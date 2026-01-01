@@ -47,44 +47,55 @@
     "date": "日付",
     "time": "時間",
     "score": "スコア",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "すべて",
+    "noMatchesFound": "試合が見つかりません",
+    "tbd": "未定"
   },
   "theme": {
     "light": "ライト",
     "dark": "ダーク",
     "system": "システム",
-    "title": "Theme"
+    "title": "テーマ"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "統計",
+    "possession": "ポゼッション",
+    "shots": "シュート",
+    "shotsOnTarget": "枠内シュート",
+    "corners": "コーナーキック",
+    "bettingRecommendations": "ベッティング推奨",
+    "loadingRecommendations": "推奨を読み込み中...",
+    "noRecommendations": "まだベッティング推奨は利用できません。",
+    "matchNotFound": "試合が見つかりません"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "リーグ表",
+    "noData": "順位データはまだ利用できません。試合が同期された後にデータが入力されます。",
+    "position": "順位",
+    "team": "チーム",
+    "played": "試",
+    "wins": "勝",
+    "draws": "分",
+    "losses": "敗",
+    "goalDifference": "得失",
+    "points": "点"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "リーグが見つかりません",
+    "reloadPage": "ページを再読み込み",
+    "goHome": "ホームに戻る",
+    "somethingWentWrong": "問題が発生しました",
+    "unexpectedError": "予期しないエラーが発生しました"
+  },
+  "stats": {
+    "title": "統計",
+    "noTeams": "利用可能なチームがありません",
+    "wins": "勝利",
+    "draws": "引き分け",
+    "losses": "敗北",
+    "totalGoals": "総ゴール数",
+    "totalShots": "総シュート数",
+    "shotsOnTarget": "枠内シュート",
+    "goalsPerMatch": "ゴール/試合"
   }
 }

@@ -47,44 +47,55 @@
     "date": "날짜",
     "time": "시간",
     "score": "점수",
-    "all": "All",
-    "noMatchesFound": "No matches found",
-    "tbd": "TBD"
+    "all": "전체",
+    "noMatchesFound": "경기를 찾을 수 없습니다",
+    "tbd": "미정"
   },
   "theme": {
     "light": "라이트",
     "dark": "다크",
     "system": "시스템",
-    "title": "Theme"
+    "title": "테마"
   },
   "matchDetail": {
-    "statistics": "Statistics",
-    "possession": "Possession",
-    "shots": "Shots",
-    "shotsOnTarget": "Shots on Target",
-    "corners": "Corners",
-    "bettingRecommendations": "Betting Recommendations",
-    "loadingRecommendations": "Loading recommendations...",
-    "noRecommendations": "No betting recommendations available yet.",
-    "matchNotFound": "Match not found"
+    "statistics": "통계",
+    "possession": "볼 소유율",
+    "shots": "슈팅",
+    "shotsOnTarget": "유효 슈팅",
+    "corners": "코너킥",
+    "bettingRecommendations": "베팅 추천",
+    "loadingRecommendations": "추천 로딩 중...",
+    "noRecommendations": "아직 베팅 추천을 사용할 수 없습니다.",
+    "matchNotFound": "경기를 찾을 수 없습니다"
   },
   "standings": {
-    "leagueTable": "League Table",
-    "noData": "Standings data not available yet. Data will be populated after matches are synced.",
-    "position": "Pos",
-    "team": "Team",
-    "played": "P",
-    "wins": "W",
-    "draws": "D",
-    "losses": "L",
-    "goalDifference": "GD",
-    "points": "Pts"
+    "leagueTable": "리그 테이블",
+    "noData": "순위 데이터가 아직 사용할 수 없습니다. 경기가 동기화된 후 데이터가 채워집니다.",
+    "position": "순위",
+    "team": "팀",
+    "played": "경기",
+    "wins": "승",
+    "draws": "무",
+    "losses": "패",
+    "goalDifference": "득실",
+    "points": "승점"
   },
   "common": {
-    "leagueNotFound": "League not found",
-    "reloadPage": "Reload Page",
-    "goHome": "Go Home",
-    "somethingWentWrong": "Something went wrong",
-    "unexpectedError": "An unexpected error occurred"
+    "leagueNotFound": "리그를 찾을 수 없습니다",
+    "reloadPage": "페이지 새로고침",
+    "goHome": "홈으로 이동",
+    "somethingWentWrong": "문제가 발생했습니다",
+    "unexpectedError": "예상치 못한 오류가 발생했습니다"
+  },
+  "stats": {
+    "title": "통계",
+    "noTeams": "사용 가능한 팀이 없습니다",
+    "wins": "승리",
+    "draws": "무승부",
+    "losses": "패배",
+    "totalGoals": "총 골",
+    "totalShots": "총 슈팅",
+    "shotsOnTarget": "유효 슈팅",
+    "goalsPerMatch": "골/경기"
   }
 }
