@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { routes } from '@/lib/routes';
 import { matches, teams } from '@/db/schema';
@@ -31,16 +31,16 @@ export function MatchCard({
   homeTeam: Team | null;
   awayTeam: Team | null;
 }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
 
   const getStatusBadge = () => {
     switch (match.status) {
       case 'live':
-        return <Badge variant='destructive'>{t('matches.live')}</Badge>;
+        return <Badge variant='destructive'>{t('matchesLive')}</Badge>;
       case 'finished':
-        return <Badge variant='secondary'>{t('matches.finished')}</Badge>;
+        return <Badge variant='secondary'>{t('matchesFinished')}</Badge>;
       case 'scheduled':
-        return <Badge variant='outline'>{t('matches.upcoming')}</Badge>;
+        return <Badge variant='outline'>{t('matchesUpcoming')}</Badge>;
       default:
         return null;
     }
@@ -52,7 +52,7 @@ export function MatchCard({
         <CardHeader>
           <div className='flex items-center justify-between'>
             <CardTitle className='text-lg'>
-              {homeTeam?.name || 'TBD'} {t('matches.vs')}{' '}
+              {homeTeam?.name || 'TBD'} {t('matchesVs')}{' '}
               {awayTeam?.name || 'TBD'}
             </CardTitle>
             {getStatusBadge()}

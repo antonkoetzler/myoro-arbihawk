@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import { MatchCard } from '@/components/match-card';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ export function MatchesClient({
   selectedLeagueId: string | null;
   statusFilter: 'scheduled' | 'live' | undefined;
 }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const router = useRouter();
   const [selectedLeague, setSelectedLeague] = useState(selectedLeagueId);
   const [status, setStatus] = useState<
@@ -36,7 +36,6 @@ export function MatchesClient({
   >(statusFilter);
 
   // Teams will be fetched via tRPC when needed by MatchCard
-
   const handleLeagueChange = (leagueId: string) => {
     setSelectedLeague(leagueId);
     const params = new URLSearchParams();
@@ -60,13 +59,13 @@ export function MatchesClient({
       <Card>
         <CardContent className='pt-6'>
           <p className='text-center text-muted-foreground mb-4'>
-            {t('subscriptions.noSubscriptions')}
+            {t('subscriptionsNoSubscriptions')}
           </p>
           <Button
             onClick={() => router.push(routes.leagues)}
             className='w-full'
           >
-            {t('leagues.browse')}
+            {t('leaguesBrowse')}
           </Button>
         </CardContent>
       </Card>
@@ -75,12 +74,12 @@ export function MatchesClient({
 
   return (
     <div className='container mx-auto py-8'>
-      <h1 className='text-4xl font-bold mb-8'>{t('matches.title')}</h1>
+      <h1 className='text-4xl font-bold mb-8'>{t('matchesTitle')}</h1>
 
       <div className='mb-6 space-y-4'>
         <div>
           <label className='text-sm font-medium mb-2 block'>
-            {t('leagues.title')}
+            {t('leaguesTitle')}
           </label>
           <select
             value={selectedLeague || ''}
@@ -100,19 +99,19 @@ export function MatchesClient({
             variant={status === undefined ? 'default' : 'outline'}
             onClick={() => handleStatusChange(undefined)}
           >
-            {t('matches.all')}
+            {t('matchesAll')}
           </Button>
           <Button
             variant={status === 'scheduled' ? 'default' : 'outline'}
             onClick={() => handleStatusChange('scheduled')}
           >
-            {t('matches.upcoming')}
+            {t('matchesUpcoming')}
           </Button>
           <Button
             variant={status === 'live' ? 'default' : 'outline'}
             onClick={() => handleStatusChange('live')}
           >
-            {t('matches.live')}
+            {t('matchesLive')}
           </Button>
         </div>
       </div>
@@ -121,7 +120,7 @@ export function MatchesClient({
         <Card>
           <CardContent className='pt-6'>
             <p className='text-center text-muted-foreground'>
-              {t('matches.noMatchesFound')}
+              {t('matchesNoMatchesFound')}
             </p>
           </CardContent>
         </Card>

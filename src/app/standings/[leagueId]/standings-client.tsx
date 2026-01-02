@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { League } from '@/db/schema';
 
@@ -18,12 +18,12 @@ export function StandingsClient({
   league: League;
   standings: Standing[];
 }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
 
   return (
     <div className='container mx-auto py-8'>
       <h1 className='text-4xl font-bold mb-8'>
-        {league.name} - {t('leagues.title')}
+        {league.name} - {t('leaguesTitle')}
       </h1>
 
       {!standings || standings.length === 0 ? (

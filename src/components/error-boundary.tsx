@@ -3,7 +3,7 @@
 import { Component, type ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import { logger } from '@/lib/logger';
 
 interface ErrorBoundaryProps {
@@ -60,17 +60,17 @@ export class ErrorBoundary extends Component<
  * Default error fallback UI.
  */
 function ErrorFallback({ error }: { error: Error | null }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
 
   return (
     <div className='flex items-center justify-center min-h-screen p-4'>
       <Card className='w-full max-w-md'>
         <CardHeader>
-          <CardTitle>{t('common.somethingWentWrong')}</CardTitle>
+          <CardTitle>{t('commonSomethingWentWrong')}</CardTitle>
         </CardHeader>
         <CardContent className='space-y-4'>
           <p className='text-sm text-muted-foreground'>
-            {error?.message || t('common.unexpectedError')}
+            {error?.message || t('commonUnexpectedError')}
           </p>
           <div className='flex gap-2'>
             <Button
@@ -78,14 +78,14 @@ function ErrorFallback({ error }: { error: Error | null }) {
               variant='default'
               className='flex-1'
             >
-              {t('common.reloadPage')}
+              {t('commonReloadPage')}
             </Button>
             <Button
               onClick={() => (window.location.href = '/')}
               variant='outline'
               className='flex-1'
             >
-              {t('common.goHome')}
+              {t('commonGoHome')}
             </Button>
           </div>
         </CardContent>

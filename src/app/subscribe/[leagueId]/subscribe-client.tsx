@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import {
   Card,
   CardContent,
@@ -17,7 +17,7 @@ import { createCheckoutAction } from '@/app/actions/stripe';
  * Client component for subscription checkout interactivity.
  */
 export function SubscribeClient({ league }: { league: League }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +41,7 @@ export function SubscribeClient({ league }: { league: League }) {
     <div className='flex items-center justify-center min-h-screen p-4'>
       <Card className='w-full max-w-md'>
         <CardHeader>
-          <CardTitle>{t('leagues.subscribe')}</CardTitle>
+          <CardTitle>{t('leaguesSubscribe')}</CardTitle>
           <CardDescription>
             {league.name} - {league.country}
           </CardDescription>
@@ -56,7 +56,7 @@ export function SubscribeClient({ league }: { league: League }) {
             disabled={isPending}
             className='w-full'
           >
-            {isPending ? t('auth.loading') : t('leagues.subscribe')}
+            {isPending ? t('authLoading') : t('leaguesSubscribe')}
           </Button>
           {error && <p className='text-sm text-red-600'>{error}</p>}
         </CardContent>

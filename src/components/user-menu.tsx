@@ -1,7 +1,7 @@
 'use client';
 
 import { useTheme } from 'next-themes';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +22,7 @@ import { logoutAction } from '@/app/actions/auth';
  */
 export function UserMenu() {
   const { theme, setTheme } = useTheme();
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
   const [_isPending, startTransition] = useTransition();
 
@@ -50,22 +50,22 @@ export function UserMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end'>
-        <DropdownMenuLabel>{t('theme.title')}</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('themeTitle')}</DropdownMenuLabel>
         <DropdownMenuItem onClick={() => setTheme('light')}>
-          {t('theme.light')}
+          {t('themeLight')}
           {theme === 'light' && ' ✓'}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('dark')}>
-          {t('theme.dark')}
+          {t('themeDark')}
           {theme === 'dark' && ' ✓'}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('system')}>
-          {t('theme.system')}
+          {t('themeSystem')}
           {theme === 'system' && ' ✓'}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout}>
-          {t('auth.logout')}
+          {t('authLogout')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

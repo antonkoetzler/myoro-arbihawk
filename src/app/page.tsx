@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,7 @@ import { signupAction, loginAction } from '@/app/actions/auth';
  * Uses Server Actions for authentication.
  */
 export default function Home() {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,13 +47,13 @@ export default function Home() {
       <Card className='w-full max-w-md'>
         <CardHeader>
           <CardTitle className='text-center'>
-            {isLogin ? t('auth.login') : t('auth.signup')}
+            {isLogin ? t('authLogin') : t('authSignup')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className='space-y-4'>
             <div className='space-y-2'>
-              <Label htmlFor='email'>{t('auth.email')}</Label>
+              <Label htmlFor='email'>{t('authEmail')}</Label>
               <Input
                 id='email'
                 type='email'
@@ -63,7 +63,7 @@ export default function Home() {
               />
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='password'>{t('auth.password')}</Label>
+              <Label htmlFor='password'>{t('authPassword')}</Label>
               <Input
                 id='password'
                 type='password'
@@ -75,14 +75,14 @@ export default function Home() {
             </div>
             <Button type='submit' disabled={isPending} className='w-full'>
               {isPending
-                ? t('auth.loading')
+                ? t('authLoading')
                 : isLogin
-                  ? t('auth.login')
-                  : t('auth.signup')}
+                  ? t('authLogin')
+                  : t('authSignup')}
             </Button>
           </form>
           <Button onClick={() => setIsLogin(!isLogin)} className='w-full mt-4'>
-            {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
+            {isLogin ? t('authNoAccount') : t('authHasAccount')}
           </Button>
           {error && (
             <div className='text-red-600 text-sm text-center mt-4'>{error}</div>

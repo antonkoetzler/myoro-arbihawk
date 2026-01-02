@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import {
   Card,
   CardContent,
@@ -23,7 +23,7 @@ export function LeaguesClient({
   leagues: League[];
   isAuthenticated: boolean;
 }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const router = useRouter();
 
   const handleSubscribe = (leagueId: string) => {
@@ -36,13 +36,13 @@ export function LeaguesClient({
 
   return (
     <div className='container mx-auto py-8'>
-      <h1 className='text-4xl font-bold mb-8'>{t('leagues.title')}</h1>
+      <h1 className='text-4xl font-bold mb-8'>{t('leaguesTitle')}</h1>
 
       {!leagues || leagues.length === 0 ? (
         <Card>
           <CardContent className='pt-6'>
             <p className='text-center text-muted-foreground'>
-              {t('leagues.noLeagues')}
+              {t('leaguesNoLeagues')}
             </p>
           </CardContent>
         </Card>
@@ -60,7 +60,7 @@ export function LeaguesClient({
                   className='w-full'
                   disabled={!isAuthenticated}
                 >
-                  {t('leagues.subscribe')}
+                  {t('leaguesSubscribe')}
                 </Button>
               </CardContent>
             </Card>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
@@ -19,7 +19,7 @@ export function MatchDetailClient({
 }: {
   matchData: NonNullable<MatchData>;
 }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const { match, homeTeam, awayTeam, stats } = matchData;
 
   const { data: recommendations, isLoading: isLoadingRecommendations } =
@@ -32,18 +32,18 @@ export function MatchDetailClient({
     <div className='container mx-auto py-8'>
       <div className='mb-8'>
         <h1 className='text-4xl font-bold mb-4'>
-          {homeTeam?.name || t('matches.tbd')} {t('matches.vs')}{' '}
-          {awayTeam?.name || t('matches.tbd')}
+          {homeTeam?.name || t('matchesTbd')} {t('matchesVs')}{' '}
+          {awayTeam?.name || t('matchesTbd')}
         </h1>
         <div className='flex items-center gap-4'>
           <Badge
             variant={match.status === 'live' ? 'destructive' : 'secondary'}
           >
             {match.status === 'live'
-              ? t('matches.live')
+              ? t('matchesLive')
               : match.status === 'finished'
-                ? t('matches.finished')
-                : t('matches.upcoming')}
+                ? t('matchesFinished')
+                : t('matchesUpcoming')}
           </Badge>
           <span className='text-muted-foreground'>
             {format(new Date(match.date), 'PPP p')}
@@ -62,13 +62,13 @@ export function MatchDetailClient({
       {stats && (
         <Card className='mb-6'>
           <CardHeader>
-            <CardTitle>{t('matchDetail.statistics')}</CardTitle>
+            <CardTitle>{t('matchDetailStatistics')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className='grid grid-cols-2 gap-4'>
               <div>
                 <p className='text-sm text-muted-foreground'>
-                  {t('matchDetail.possession')}
+                  {t('matchDetailPossession')}
                 </p>
                 <p className='text-lg font-semibold'>
                   {stats.homePossession}% - {stats.awayPossession}%
@@ -76,7 +76,7 @@ export function MatchDetailClient({
               </div>
               <div>
                 <p className='text-sm text-muted-foreground'>
-                  {t('matchDetail.shots')}
+                  {t('matchDetailShots')}
                 </p>
                 <p className='text-lg font-semibold'>
                   {stats.homeShots} - {stats.awayShots}
@@ -84,7 +84,7 @@ export function MatchDetailClient({
               </div>
               <div>
                 <p className='text-sm text-muted-foreground'>
-                  {t('matchDetail.shotsOnTarget')}
+                  {t('matchDetailShotsOnTarget')}
                 </p>
                 <p className='text-lg font-semibold'>
                   {stats.homeShotsOnTarget} - {stats.awayShotsOnTarget}
@@ -92,7 +92,7 @@ export function MatchDetailClient({
               </div>
               <div>
                 <p className='text-sm text-muted-foreground'>
-                  {t('matchDetail.corners')}
+                  {t('matchDetailCorners')}
                 </p>
                 <p className='text-lg font-semibold'>
                   {stats.homeCorners} - {stats.awayCorners}
@@ -105,16 +105,16 @@ export function MatchDetailClient({
 
       <Card className='mb-6'>
         <CardHeader>
-          <CardTitle>{t('matchDetail.bettingRecommendations')}</CardTitle>
+          <CardTitle>{t('matchDetailBettingRecommendations')}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoadingRecommendations ? (
             <p className='text-muted-foreground'>
-              {t('matchDetail.loadingRecommendations')}
+              {t('matchDetailLoadingRecommendations')}
             </p>
           ) : !recommendations || recommendations.length === 0 ? (
             <p className='text-muted-foreground'>
-              {t('matchDetail.noRecommendations')}
+              {t('matchDetailNoRecommendations')}
             </p>
           ) : (
             <div className='space-y-4'>

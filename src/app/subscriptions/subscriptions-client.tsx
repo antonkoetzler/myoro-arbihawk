@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import {
   Card,
   CardContent,
@@ -27,14 +27,14 @@ export function SubscriptionsClient({
 }: {
   initialSubscriptions: SubscriptionWithLeague[];
 }) {
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const router = useRouter();
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const handleCancel = (subscriptionId: string) => {
-    if (!confirm(t('subscriptions.cancelConfirm'))) {
+    if (!confirm(t('subscriptionsCancelConfirm'))) {
       return;
     }
 
@@ -58,20 +58,20 @@ export function SubscriptionsClient({
   return (
     <div className='container mx-auto py-8'>
       <h1 className='text-4xl font-bold mb-8'>
-        {t('subscriptions.mySubscriptions')}
+        {t('subscriptionsMySubscriptions')}
       </h1>
 
       {!subscriptions || subscriptions.length === 0 ? (
         <Card>
           <CardContent className='pt-6'>
             <p className='text-center text-muted-foreground'>
-              {t('subscriptions.noSubscriptions')}
+              {t('subscriptionsNoSubscriptions')}
             </p>
             <Button
               onClick={() => router.push(routes.leagues)}
               className='w-full mt-4'
             >
-              {t('leagues.browse')}
+              {t('leaguesBrowse')}
             </Button>
           </CardContent>
         </Card>
@@ -86,10 +86,10 @@ export function SubscriptionsClient({
               <CardContent className='space-y-4'>
                 <div className='text-sm'>
                   <p className='text-muted-foreground'>
-                    {t('subscriptions.renewsOn')}:{' '}
+                    {t('subscriptionsRenewsOn')}:{' '}
                     {format(new Date(subscription.currentPeriodEnd), 'PPP')}
                   </p>
-                  <p className='font-medium'>{t('subscriptions.active')}</p>
+                  <p className='font-medium'>{t('subscriptionsActive')}</p>
                 </div>
                 <Button
                   variant='destructive'
@@ -97,7 +97,7 @@ export function SubscriptionsClient({
                   disabled={isPending}
                   className='w-full'
                 >
-                  {isPending ? t('auth.loading') : t('subscriptions.cancel')}
+                  {isPending ? t('authLoading') : t('subscriptionsCancel')}
                 </Button>
                 {error && <p className='text-sm text-red-600 mt-2'>{error}</p>}
               </CardContent>

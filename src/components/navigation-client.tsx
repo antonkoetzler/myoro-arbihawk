@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { useTranslations } from '@/hooks/use-translations';
+import { useTranslation } from 'react-i18next';
 import { UserMenu } from '@/components/user-menu';
 import { routes } from '@/lib/routes';
 
@@ -16,7 +16,7 @@ export function NavigationClient({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { t } = useTranslations();
+  const { t } = useTranslation();
 
   const isActive = (path: string) => pathname === path;
 
@@ -29,26 +29,26 @@ export function NavigationClient({
               variant={isActive(routes.subscriptions) ? 'default' : 'ghost'}
               onClick={() => router.push(routes.subscriptions)}
             >
-              {t('subscriptions.mySubscriptions')}
+              {t('subscriptionsMySubscriptions')}
             </Button>
             <Button
               variant={isActive(routes.leagues) ? 'default' : 'ghost'}
               onClick={() => router.push(routes.leagues)}
             >
-              {t('leagues.title')}
+              {t('leaguesTitle')}
             </Button>
             <Button
               variant={isActive(routes.matches) ? 'default' : 'ghost'}
               onClick={() => router.push(routes.matches)}
             >
-              {t('matches.title')}
+              {t('matchesTitle')}
             </Button>
             {hasSubscriptions && (
               <Button
                 variant={isActive(routes.stats) ? 'default' : 'ghost'}
                 onClick={() => router.push(routes.stats)}
               >
-                {t('stats.title')}
+                {t('statsTitle')}
               </Button>
             )}
           </div>
