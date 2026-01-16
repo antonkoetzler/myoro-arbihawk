@@ -1,8 +1,9 @@
 """
-SQLite database for storing fixtures, odds, scores, and settlements.
+SQLite database for storing fixtures, odds, scores, and betting data.
 """
 
 import sqlite3
+import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -13,6 +14,8 @@ import config
 
 class Database:
     """SQLite database manager for betting data."""
+    
+    SCHEMA_VERSION = 2  # Increment when schema changes
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or config.DB_PATH
@@ -37,6 +40,14 @@ class Database:
         """Initialize database schema."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            
+            # Schema version tracking
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
             # Fixtures table
             cursor.execute("""
@@ -85,23 +96,100 @@ class Database:
                 )
             """)
             
-            # Settlements table
+            # Ingestion metadata table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS settlements (
-                    fixture_id TEXT PRIMARY KEY,
-                    home_score INTEGER,
-                    away_score INTEGER,
-                    status TEXT,
+                CREATE TABLE IF NOT EXISTS ingestion_metadata (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source TEXT NOT NULL,
+                    ingested_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    records_count INTEGER DEFAULT 0,
+                    checksum TEXT,
+                    validation_status TEXT,
+                    errors TEXT
+                )
+            """)
+            
+            # Bet settlements table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bet_settlements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id TEXT NOT NULL,
+                    market_id TEXT,
+                    outcome_id TEXT,
+                    settled_outcome TEXT,
                     settled_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (fixture_id) REFERENCES fixtures(fixture_id),
+                    UNIQUE(fixture_id, market_id, outcome_id)
+                )
+            """)
+            
+            # Bet history table (for fake money system)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bet_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id TEXT NOT NULL,
+                    market_id TEXT,
+                    market_name TEXT,
+                    outcome_id TEXT,
+                    outcome_name TEXT,
+                    odds REAL NOT NULL,
+                    stake REAL NOT NULL,
+                    placed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    settled_at TEXT,
+                    result TEXT DEFAULT 'pending',
+                    payout REAL DEFAULT 0,
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(fixture_id)
+                )
+            """)
+            
+            # Model versions table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS model_versions (
+                    version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    market TEXT NOT NULL,
+                    model_path TEXT NOT NULL,
+                    trained_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    training_samples INTEGER DEFAULT 0,
+                    cv_score REAL,
+                    is_active INTEGER DEFAULT 0,
+                    performance_metrics TEXT
+                )
+            """)
+            
+            # Metrics table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric_type TEXT NOT NULL,
+                    metric_name TEXT NOT NULL,
+                    value REAL NOT NULL,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    metadata TEXT
                 )
             """)
             
             # Create indexes for performance
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_start_time ON fixtures(start_time)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_tournament ON fixtures(tournament_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_teams_time ON fixtures(home_team_name, away_team_name, start_time)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_fixture ON odds(fixture_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_bookmaker ON odds(bookmaker_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scores_fixture ON scores(fixture_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_settlements_fixture_market ON bet_settlements(fixture_id, market_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_fixture ON bet_history(fixture_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_result ON bet_history(result)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_market ON model_versions(market)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_active ON model_versions(market, is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_metrics_type_time ON metrics(metric_type, timestamp)")
+            
+            # Record schema version
+            cursor.execute("""
+                INSERT OR IGNORE INTO schema_version (version) VALUES (?)
+            """, (self.SCHEMA_VERSION,))
+    
+    # =========================================================================
+    # FIXTURE OPERATIONS
+    # =========================================================================
     
     def insert_fixture(self, fixture_data: Dict[str, Any]) -> None:
         """Insert or update a fixture."""
@@ -126,56 +214,35 @@ class Database:
                 fixture_data.get('status', 'scheduled')
             ))
     
-    def insert_odds(self, fixture_id: str, odds_data: List[Dict[str, Any]]) -> None:
-        """Insert odds for a fixture."""
+    def insert_fixtures_batch(self, fixtures: List[Dict[str, Any]]) -> int:
+        """Insert multiple fixtures in a batch."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            for odd in odds_data:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO odds
-                    (fixture_id, bookmaker_id, bookmaker_name, market_id,
-                     market_name, outcome_id, outcome_name, odds_value)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    fixture_id,
-                    odd.get('bookmaker_id'),
-                    odd.get('bookmaker_name'),
-                    odd.get('market_id'),
-                    odd.get('market_name'),
-                    odd.get('outcome_id'),
-                    odd.get('outcome_name'),
-                    odd.get('odds_value')
-                ))
-    
-    def insert_score(self, fixture_id: str, score_data: Dict[str, Any]) -> None:
-        """Insert or update a score."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR REPLACE INTO scores
-                (fixture_id, home_score, away_score, status)
-                VALUES (?, ?, ?, ?)
-            """, (
-                fixture_id,
-                score_data.get('home_score'),
-                score_data.get('away_score'),
-                score_data.get('status')
-            ))
-    
-    def insert_settlement(self, fixture_id: str, settlement_data: Dict[str, Any]) -> None:
-        """Insert or update a settlement."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR REPLACE INTO settlements
-                (fixture_id, home_score, away_score, status)
-                VALUES (?, ?, ?, ?)
-            """, (
-                fixture_id,
-                settlement_data.get('home_score'),
-                settlement_data.get('away_score'),
-                settlement_data.get('status')
-            ))
+            count = 0
+            for fixture_data in fixtures:
+                try:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO fixtures 
+                        (fixture_id, sport_id, tournament_id, tournament_name,
+                         home_team_id, home_team_name, away_team_id, away_team_name,
+                         start_time, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        fixture_data['fixture_id'],
+                        fixture_data.get('sport_id'),
+                        fixture_data.get('tournament_id'),
+                        fixture_data.get('tournament_name'),
+                        fixture_data.get('home_team_id'),
+                        fixture_data.get('home_team_name'),
+                        fixture_data.get('away_team_id'),
+                        fixture_data.get('away_team_name'),
+                        fixture_data.get('start_time'),
+                        fixture_data.get('status', 'scheduled')
+                    ))
+                    count += 1
+                except Exception:
+                    pass
+            return count
     
     def get_fixtures(self, 
                      sport_id: Optional[int] = None,
@@ -212,6 +279,65 @@ class Database:
             
             return pd.read_sql_query(query, conn, params=params)
     
+    def fixture_exists(self, fixture_id: str) -> bool:
+        """Check if fixture exists in database."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM fixtures WHERE fixture_id = ?", (fixture_id,))
+            return cursor.fetchone() is not None
+    
+    # =========================================================================
+    # ODDS OPERATIONS
+    # =========================================================================
+    
+    def insert_odds(self, fixture_id: str, odds_data: List[Dict[str, Any]]) -> None:
+        """Insert odds for a fixture."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            for odd in odds_data:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO odds
+                    (fixture_id, bookmaker_id, bookmaker_name, market_id,
+                     market_name, outcome_id, outcome_name, odds_value)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    fixture_id,
+                    odd.get('bookmaker_id'),
+                    odd.get('bookmaker_name'),
+                    odd.get('market_id'),
+                    odd.get('market_name'),
+                    odd.get('outcome_id'),
+                    odd.get('outcome_name'),
+                    odd.get('odds_value')
+                ))
+    
+    def insert_odds_batch(self, odds_records: List[Dict[str, Any]]) -> int:
+        """Insert multiple odds records in a batch."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            count = 0
+            for odd in odds_records:
+                try:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO odds
+                        (fixture_id, bookmaker_id, bookmaker_name, market_id,
+                         market_name, outcome_id, outcome_name, odds_value)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        odd.get('fixture_id'),
+                        odd.get('bookmaker_id'),
+                        odd.get('bookmaker_name'),
+                        odd.get('market_id'),
+                        odd.get('market_name'),
+                        odd.get('outcome_id'),
+                        odd.get('outcome_name'),
+                        odd.get('odds_value')
+                    ))
+                    count += 1
+                except Exception:
+                    pass
+            return count
+    
     def get_odds(self, fixture_id: Optional[str] = None,
                  bookmaker_id: Optional[str] = None,
                  market_id: Optional[str] = None) -> pd.DataFrame:
@@ -234,6 +360,47 @@ class Database:
             
             return pd.read_sql_query(query, conn, params=params)
     
+    # =========================================================================
+    # SCORE OPERATIONS
+    # =========================================================================
+    
+    def insert_score(self, fixture_id: str, score_data: Dict[str, Any]) -> None:
+        """Insert or update a score."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO scores
+                (fixture_id, home_score, away_score, status)
+                VALUES (?, ?, ?, ?)
+            """, (
+                fixture_id,
+                score_data.get('home_score'),
+                score_data.get('away_score'),
+                score_data.get('status')
+            ))
+    
+    def insert_scores_batch(self, scores: List[Dict[str, Any]]) -> int:
+        """Insert multiple scores in a batch."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            count = 0
+            for score_data in scores:
+                try:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO scores
+                        (fixture_id, home_score, away_score, status)
+                        VALUES (?, ?, ?, ?)
+                    """, (
+                        score_data.get('fixture_id'),
+                        score_data.get('home_score'),
+                        score_data.get('away_score'),
+                        score_data.get('status')
+                    ))
+                    count += 1
+                except Exception:
+                    pass
+            return count
+    
     def get_scores(self, fixture_id: Optional[str] = None) -> pd.DataFrame:
         """Get scores."""
         with self._get_connection() as conn:
@@ -246,12 +413,260 @@ class Database:
             
             return pd.read_sql_query(query, conn, params=params)
     
-    def fixture_exists(self, fixture_id: str) -> bool:
-        """Check if fixture exists in database."""
+    # =========================================================================
+    # INGESTION METADATA OPERATIONS
+    # =========================================================================
+    
+    def insert_ingestion_metadata(self, source: str, records_count: int,
+                                   checksum: Optional[str] = None,
+                                   validation_status: str = "success",
+                                   errors: Optional[str] = None) -> int:
+        """Record ingestion metadata."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM fixtures WHERE fixture_id = ?", (fixture_id,))
-            return cursor.fetchone() is not None
+            cursor.execute("""
+                INSERT INTO ingestion_metadata 
+                (source, records_count, checksum, validation_status, errors)
+                VALUES (?, ?, ?, ?, ?)
+            """, (source, records_count, checksum, validation_status, errors))
+            return cursor.lastrowid
+    
+    def get_ingestion_metadata(self, source: Optional[str] = None,
+                                limit: int = 100) -> pd.DataFrame:
+        """Get ingestion metadata records."""
+        with self._get_connection() as conn:
+            query = "SELECT * FROM ingestion_metadata WHERE 1=1"
+            params = []
+            
+            if source:
+                query += " AND source = ?"
+                params.append(source)
+            
+            query += " ORDER BY ingested_at DESC LIMIT ?"
+            params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # BET HISTORY OPERATIONS (FAKE MONEY)
+    # =========================================================================
+    
+    def insert_bet(self, bet_data: Dict[str, Any]) -> int:
+        """Insert a new bet into history."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO bet_history 
+                (fixture_id, market_id, market_name, outcome_id, outcome_name,
+                 odds, stake, result)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            """, (
+                bet_data['fixture_id'],
+                bet_data.get('market_id'),
+                bet_data.get('market_name'),
+                bet_data.get('outcome_id'),
+                bet_data.get('outcome_name'),
+                bet_data['odds'],
+                bet_data['stake']
+            ))
+            return cursor.lastrowid
+    
+    def settle_bet(self, bet_id: int, result: str, payout: float) -> None:
+        """Settle a bet with result and payout."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE bet_history 
+                SET result = ?, payout = ?, settled_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (result, payout, bet_id))
+    
+    def get_bet_history(self, result: Optional[str] = None,
+                        limit: int = 100) -> pd.DataFrame:
+        """Get bet history."""
+        with self._get_connection() as conn:
+            query = "SELECT * FROM bet_history WHERE 1=1"
+            params = []
+            
+            if result:
+                query += " AND result = ?"
+                params.append(result)
+            
+            query += " ORDER BY placed_at DESC LIMIT ?"
+            params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    def get_pending_bets(self) -> pd.DataFrame:
+        """Get all pending bets."""
+        return self.get_bet_history(result='pending', limit=10000)
+    
+    def get_bankroll_stats(self) -> Dict[str, Any]:
+        """Get bankroll statistics."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Total bets
+            cursor.execute("SELECT COUNT(*) FROM bet_history")
+            total_bets = cursor.fetchone()[0]
+            
+            # Settled bets
+            cursor.execute("SELECT COUNT(*) FROM bet_history WHERE result != 'pending'")
+            settled_bets = cursor.fetchone()[0]
+            
+            # Wins
+            cursor.execute("SELECT COUNT(*) FROM bet_history WHERE result = 'win'")
+            wins = cursor.fetchone()[0]
+            
+            # Total stake
+            cursor.execute("SELECT COALESCE(SUM(stake), 0) FROM bet_history")
+            total_stake = cursor.fetchone()[0]
+            
+            # Total payout
+            cursor.execute("SELECT COALESCE(SUM(payout), 0) FROM bet_history WHERE result != 'pending'")
+            total_payout = cursor.fetchone()[0]
+            
+            return {
+                "total_bets": total_bets,
+                "settled_bets": settled_bets,
+                "pending_bets": total_bets - settled_bets,
+                "wins": wins,
+                "losses": settled_bets - wins,
+                "win_rate": wins / settled_bets if settled_bets > 0 else 0,
+                "total_stake": total_stake,
+                "total_payout": total_payout,
+                "profit": total_payout - total_stake,
+                "roi": (total_payout - total_stake) / total_stake if total_stake > 0 else 0
+            }
+    
+    # =========================================================================
+    # MODEL VERSION OPERATIONS
+    # =========================================================================
+    
+    def insert_model_version(self, market: str, model_path: str,
+                              training_samples: int, cv_score: float,
+                              performance_metrics: Optional[Dict] = None) -> int:
+        """Insert a new model version."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            metrics_json = json.dumps(performance_metrics) if performance_metrics else None
+            
+            cursor.execute("""
+                INSERT INTO model_versions 
+                (market, model_path, training_samples, cv_score, is_active, performance_metrics)
+                VALUES (?, ?, ?, ?, 0, ?)
+            """, (market, model_path, training_samples, cv_score, metrics_json))
+            
+            return cursor.lastrowid
+    
+    def set_active_model(self, version_id: int, market: str) -> None:
+        """Set a model version as active (deactivates others for same market)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Deactivate all models for this market
+            cursor.execute("""
+                UPDATE model_versions SET is_active = 0 WHERE market = ?
+            """, (market,))
+            
+            # Activate the specified version
+            cursor.execute("""
+                UPDATE model_versions SET is_active = 1 WHERE version_id = ?
+            """, (version_id,))
+    
+    def get_active_model(self, market: str) -> Optional[Dict[str, Any]]:
+        """Get the active model for a market."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM model_versions 
+                WHERE market = ? AND is_active = 1
+            """, (market,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+    
+    def get_model_versions(self, market: Optional[str] = None,
+                           limit: int = 100) -> pd.DataFrame:
+        """Get model versions."""
+        with self._get_connection() as conn:
+            query = "SELECT * FROM model_versions WHERE 1=1"
+            params = []
+            
+            if market:
+                query += " AND market = ?"
+                params.append(market)
+            
+            query += " ORDER BY trained_at DESC LIMIT ?"
+            params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # METRICS OPERATIONS
+    # =========================================================================
+    
+    def insert_metric(self, metric_type: str, metric_name: str, value: float,
+                       metadata: Optional[Dict] = None) -> int:
+        """Insert a metric record."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            metadata_json = json.dumps(metadata) if metadata else None
+            
+            cursor.execute("""
+                INSERT INTO metrics (metric_type, metric_name, value, metadata)
+                VALUES (?, ?, ?, ?)
+            """, (metric_type, metric_name, value, metadata_json))
+            
+            return cursor.lastrowid
+    
+    def get_metrics(self, metric_type: Optional[str] = None,
+                     metric_name: Optional[str] = None,
+                     from_date: Optional[str] = None,
+                     to_date: Optional[str] = None,
+                     limit: int = 1000) -> pd.DataFrame:
+        """Get metrics matching criteria."""
+        with self._get_connection() as conn:
+            query = "SELECT * FROM metrics WHERE 1=1"
+            params = []
+            
+            if metric_type:
+                query += " AND metric_type = ?"
+                params.append(metric_type)
+            
+            if metric_name:
+                query += " AND metric_name = ?"
+                params.append(metric_name)
+            
+            if from_date:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+            
+            if to_date:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+            
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    def cleanup_old_metrics(self, retention_months: int = 18) -> int:
+        """Delete metrics older than retention period."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM metrics 
+                WHERE timestamp < datetime('now', '-' || ? || ' months')
+            """, (retention_months,))
+            return cursor.rowcount
+    
+    # =========================================================================
+    # UTILITY OPERATIONS
+    # =========================================================================
     
     def get_last_fetched_date(self, tournament_id: int) -> Optional[str]:
         """Get the latest fixture date for a tournament."""
@@ -263,4 +678,18 @@ class Database:
             """, (tournament_id,))
             result = cursor.fetchone()
             return result[0] if result and result[0] else None
-
+    
+    def get_database_stats(self) -> Dict[str, int]:
+        """Get database statistics."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            stats = {}
+            tables = ['fixtures', 'odds', 'scores', 'bet_history', 
+                      'model_versions', 'metrics', 'ingestion_metadata']
+            
+            for table in tables:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                stats[table] = cursor.fetchone()[0]
+            
+            return stats

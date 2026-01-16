@@ -6,109 +6,73 @@ The arbitrage hawk - A neural network-based betting prediction and recommendatio
 
 Arbihawk uses machine learning (XGBoost) to predict match outcomes and identify value bets based on expected value calculations. The system:
 
-- Collects match data and odds from RapidAPI's ODDS-API
+- Collects match data and odds from scrapers (Betano, FBref)
 - Stores data locally in SQLite
 - Trains models on historical data
 - Identifies value bets with positive expected value
+- Tracks performance with fake money system
+- Provides a dashboard for monitoring and control
 
 ## Setup
 
-1. **Activate the virtual environment** (required before running any scripts):
+1. **Clone the repository with submodules:**
+
+   ```bash
+   git clone --recurse-submodules <repo-url>
+   cd arbihawk
+   ```
+
+   Or if already cloned:
+
+   ```bash
+   git submodule update --init --recursive
+   ```
+
+2. **Create and activate the virtual environment:**
 
    **Windows PowerShell:**
 
    ```powershell
+   python -m venv venv
    .\venv\Scripts\Activate.ps1
-   ```
-
-   **Windows CMD:**
-
-   ```cmd
-   venv\Scripts\activate.bat
    ```
 
    **macOS/Linux:**
 
    ```bash
+   python -m venv venv
    source venv/bin/activate
    ```
 
-2. **Install dependencies** (if not already installed):
+3. **Install dependencies:**
 
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Configure environment variables:**
+4. **Configure settings (optional):**
 
-   Create a `.env` file in the `arbihawk` directory with:
+   Edit `config/config.json` for main settings:
 
-   ```bash
-   ODDS_API_KEY=your_rapidapi_key_here
-   EV_THRESHOLD=0.07  # Optional: Expected value threshold (default 7%)
-   DB_PATH=./data/arbihawk.db  # Optional: Database path
+   ```json
+   {
+     "db_path": "data/arbihawk.db",
+     "ev_threshold": 0.07
+   }
    ```
 
-**Important**: Always activate the virtual environment before running any scripts!
+   Edit `config/automation.json` for automation settings.
 
 ## Usage
 
-### Train Models
+### Common Workflows
 
-**Make sure the virtual environment is activated first!**
+1. **Collect Data** - Run data collection to gather fixtures, odds, and scores
+2. **Train Models** - Train prediction models on historical data
+3. **Start Dashboard** - Launch the monitoring dashboard at http://localhost:8000
+4. **Run Automation** - Execute automated collection and training cycles
 
-Train models for all markets (1x2, over_under, btts):
-
-**Windows PowerShell:**
-
-```powershell
-.\venv\Scripts\Activate.ps1
-python train.py
-```
-
-**Windows CMD:**
-
-```cmd
-venv\Scripts\activate.bat
-python train.py
-```
-
-**macOS/Linux:**
-
-```bash
-source venv/bin/activate
-python train.py
-```
-
-Or use the helper scripts:
-
-- Windows: `.\train.ps1` (PowerShell) or `train.bat` (CMD)
-- macOS/Linux: `./train.sh`
-
-This will:
-
-- Collect the last 30 days of match data
-- Extract features from completed matches
-- Train models for all markets
-- Save models to `models/saved/`
-
-See [docs/training.md](docs/training.md) for detailed training documentation.
-
-### Get Betting Recommendations
-
-```bash
-# Get value bet recommendations
-python main.py --market 1x2 --limit 10
-
-# Use a specific model
-python main.py --market 1x2 --model-path models/saved/1x2_model.pkl
-```
-
-### Test System
-
-```bash
-python test_system.py
-```
+All commands are available as VS Code tasks for convenience. See [Tasks Guide](docs/tasks.md) for the complete reference.
 
 ## Markets
 
@@ -118,25 +82,47 @@ python test_system.py
 
 ## Architecture
 
-- `data/collectors/odds_api.py`: ODDS-API data collection
-- `data/database.py`: SQLite database management
-- `data/features.py`: Feature engineering
-- `models/predictor.py`: XGBoost prediction models
-- `engine/value_bet.py`: Value betting engine
-- `train.py`: Training script
-- `main.py`: Main application for recommendations
+```
+arbihawk/
+├── automation/          # Scheduled data collection and training
+├── config/              # JSON configuration files
+├── dashboard/           # FastAPI backend and React frontend
+├── data/                # Database and data processing
+├── engine/              # Value betting engine
+├── models/              # XGBoost prediction models
+├── monitoring/          # Metrics and reporting
+├── scrapers/            # Git submodule for data scrapers
+├── testing/             # Fake money system
+└── docs/                # Documentation
+```
 
 ## Data Storage
 
-Data is stored locally in SQLite at `data/arbihawk.db` by default. The database includes:
+Data is stored locally in SQLite at `data/arbihawk.db`. The database includes:
 
 - Fixtures (matches)
-- Odds from multiple bookmakers
-- Scores and settlements
-- Indexes for efficient querying
+- Odds from scrapers
+- Scores for completed matches
+- Bet history (fake money)
+- Model versions
+- Performance metrics
 
-## See Also
+## Configuration
 
-- [docs/setup.md](docs/setup.md) - Detailed setup instructions
-- [docs/collector.md](docs/collector.md) - Data collection documentation
-- [docs/predictor.md](docs/predictor.md) - Model documentation
+All configuration is stored in JSON files in the `config/` directory:
+
+- `config.json` - Main settings (database path, EV threshold)
+- `automation.json` - Automation schedules, scraper args, fake money settings
+
+## Documentation Index
+
+- [Tasks Guide](docs/tasks.md) - Using VS Code tasks for all commands
+- [Setup Guide](docs/setup.md) - Detailed setup instructions
+- [Training Guide](docs/training.md) - Model training documentation
+- [Predictor Guide](docs/predictor.md) - Model architecture and usage
+- [Ingestion Guide](docs/ingestion.md) - Data ingestion from scrapers
+- [Automation Guide](docs/automation.md) - Automated scheduling and workflows
+- [Testing Guide](docs/testing.md) - Fake money system and performance testing
+- [Monitoring Guide](docs/monitoring.md) - Metrics and performance tracking
+- [Versioning Guide](docs/versioning.md) - Model versioning and rollback
+- [Dashboard Guide](docs/dashboard.md) - Dashboard usage and API reference

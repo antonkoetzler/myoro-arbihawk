@@ -1,7 +1,6 @@
 # Myoro Arbihawk
 
-Sports analysis application for soccer leagues with subscription-based access,
-real-time match statistics, and AI-powered betting recommendations.
+Sports analysis application for soccer leagues with subscription-based access, real-time match statistics, and AI-powered betting recommendations.
 
 ## Architecture
 
@@ -388,11 +387,13 @@ The seed script (`src/db/seed/`) creates test data for development:
 **How to seed:**
 
 1. **Initial setup** (recommended):
+
    ```bash
    bun run setup  # Includes seeding
    ```
 
 2. **Re-seed manually**:
+
    ```bash
    bun run db:seed
    ```

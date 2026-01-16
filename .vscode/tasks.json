@@ -1,0 +1,287 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup: Install Dependencies",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "pip",
+        "install",
+        "-r",
+        "requirements.txt"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "pip",
+          "install",
+          "-r",
+          "requirements.txt"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Setup: Initialize Git Submodules",
+      "type": "shell",
+      "command": "git submodule update --init --recursive && cd scrapers && python -m venv venv && venv/bin/python -m pip install -r requirements.txt",
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          "git submodule update --init --recursive; if ($LASTEXITCODE -eq 0) { cd scrapers; python -m venv venv; if ($LASTEXITCODE -eq 0) { & 'venv\\Scripts\\python.exe' -m pip install -r requirements.txt } }"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Automation: Collect Data",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "automation.runner",
+        "--mode=collect"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "automation.runner",
+          "--mode=collect"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Automation: Train Models",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "automation.runner",
+        "--mode=train"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "automation.runner",
+          "--mode=train"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Automation: Full Cycle",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "automation.runner",
+        "--mode=full"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "automation.runner",
+          "--mode=full"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Automation: Run Once",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "automation.runner",
+        "--once"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "automation.runner",
+          "--once"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Automation: Run Daemon",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "automation.runner",
+        "--daemon"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "automation.runner",
+          "--daemon"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Automation: Check Status",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "automation.runner",
+        "--status"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "automation.runner",
+          "--status"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Training: Train All Models",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "train.py"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "train.py"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dashboard Backend: Start Server",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-m",
+        "dashboard.api"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-m",
+          "dashboard.api"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Dashboard Backend: Start with Reload",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/uvicorn",
+      "args": [
+        "dashboard.api:app",
+        "--reload"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\uvicorn.exe",
+        "args": [
+          "dashboard.api:app",
+          "--reload"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Dashboard Frontend: Install Dependencies",
+      "type": "shell",
+      "command": "bun install",
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk/dashboard/frontend"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dashboard Frontend: Start Dev Server",
+      "type": "shell",
+      "command": "bun run dev",
+      "dependsOn": "Dashboard Frontend: Install Dependencies",
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk/dashboard/frontend"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Database: Check Stats",
+      "type": "shell",
+      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "args": [
+        "-c",
+        "from data.database import Database; db = Database(); import json; print(json.dumps(db.get_database_stats(), indent=2))"
+      ],
+      "windows": {
+        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "args": [
+          "-c",
+          "from data.database import Database; db = Database(); import json; print(json.dumps(db.get_database_stats(), indent=2))"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/arbihawk"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

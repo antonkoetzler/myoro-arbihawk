@@ -2,14 +2,34 @@
 
 ## Overview
 
-Fetches historical match data from APIs and saves it for training.
+The Data Collector manages data ingestion from external scrapers into the SQLite database.
 
-## What It Does
+## Data Sources
 
-- **fetch_matches()** - Gets match data for a specific league and season
-- **save_matches()** - Stores collected data to file
+- **Betano Scraper** - Fixtures and odds from Betano sportsbook
+- **FBref Scraper** - Match scores and statistics
 
-## Purpose
+## How It Works
 
-Collects the historical data needed to train the predictor model.
+1. Scrapers output JSON to stdout
+2. Arbihawk reads the JSON via stdin or subprocess
+3. Data is validated against JSON schemas
+4. Valid data is stored in SQLite database
+5. FBref scores are matched to Betano fixtures
 
+## Usage
+
+Data collection is handled by the automation system:
+
+```bash
+# Collect data once
+python -m automation.runner --mode=collect
+
+# Run full automation cycle
+python -m automation.runner --once
+```
+
+## See Also
+
+- [Ingestion Guide](ingestion.md) - Detailed ingestion process
+- [Automation Guide](automation.md) - Scheduling data collection

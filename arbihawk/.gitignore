@@ -10,4 +10,4 @@ env/
 *.csv
 *.json
 data/matches/
-
+data/arbihawk.db

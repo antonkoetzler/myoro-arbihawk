@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Iosevka font via Fontsource CDN */
+@font-face {
+  font-family: 'Iosevka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/iosevka@latest/latin-400-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Iosevka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/iosevka@latest/latin-500-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Iosevka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/iosevka@latest/latin-600-normal.woff2) format('woff2');
+}
+
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --accent: #0ea5e9;
+  --accent-hover: #0284c7;
+  --accent-tertiary: #f97316;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+}
+
+body {
+  font-family: 'Iosevka', 'Space Grotesk', sans-serif;
+  background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f2e 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+.font-mono {
+  font-family: 'Iosevka', 'JetBrains Mono', monospace;
+}
+
+.card {
+  @apply bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6;
+}
+
+.stat-card {
+  @apply card hover:border-sky-500/30 transition-all duration-300;
+}
+
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+}
+
+.btn-primary {
+  @apply btn bg-sky-500 hover:bg-sky-600 text-white;
+}
+
+.btn-secondary {
+  @apply btn bg-slate-700 hover:bg-slate-600 text-white;
+}
+
+.btn-danger {
+  @apply btn bg-red-500 hover:bg-red-600 text-white;
+}
+
+.btn-tertiary {
+  @apply btn bg-orange-500 hover:bg-orange-600 text-white;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
