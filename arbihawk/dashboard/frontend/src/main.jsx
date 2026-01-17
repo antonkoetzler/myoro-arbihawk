@@ -7,8 +7,9 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchInterval: 30000, // Poll every 30 seconds
+      // No global refetchInterval - tab-based polling is handled in App.jsx
       staleTime: 10000,
+      refetchOnWindowFocus: false,
     },
   },
 })

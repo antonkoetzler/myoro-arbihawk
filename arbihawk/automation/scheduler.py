@@ -60,7 +60,8 @@ class AutomationScheduler:
         
         # State
         self._running = False
-        self._stop_event = threading.Event()
+        self._stop_event = threading.Event()  # For daemon mode
+        self._stop_task_event = threading.Event()  # For stopping individual tasks
         self._logs = deque(maxlen=1000)
         self._current_task = None
         self._last_collection = None
@@ -135,6 +136,7 @@ class AutomationScheduler:
             Result dict with collection stats
         """
         self._current_task = "collection"
+        self._stop_task_event.clear()  # Reset stop flag
         start_time = time.time()
         
         result = {
@@ -147,6 +149,12 @@ class AutomationScheduler:
         }
         
         try:
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Collection stopped by user")
+                result["stopped"] = True
+                return result
+            
             # Run Betano scraper
             self._log("info", "Starting Betano scraper...")
             try:
@@ -164,6 +172,12 @@ class AutomationScheduler:
                 self._log("error", f"Betano failed: {betano_result.get('error', 'Unknown')}")
                 result["errors"].append(f"Betano: {betano_result.get('error', 'Unknown')}")
             
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Collection stopped by user after Betano")
+                result["stopped"] = True
+                return result
+            
             # Run FBref scraper
             self._log("info", "Starting FBref scraper...")
             try:
@@ -180,6 +194,12 @@ class AutomationScheduler:
             else:
                 self._log("error", f"FBref failed: {fbref_result.get('error', 'Unknown')}")
                 result["errors"].append(f"FBref: {fbref_result.get('error', 'Unknown')}")
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Collection stopped by user after FBref")
+                result["stopped"] = True
+                return result
             
             # Match scores to fixtures
             self._log("info", "Matching scores to fixtures...")
@@ -276,16 +296,24 @@ class AutomationScheduler:
             Result dict with training stats
         """
         self._current_task = "training"
+        self._stop_task_event.clear()  # Reset stop flag
         start_time = time.time()
         
         result = {
             "success": False,
             "backup_path": None,
             "markets_trained": 0,
+            "has_data": False,
             "errors": []
         }
         
         try:
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Training stopped by user")
+                result["stopped"] = True
+                return result
+            
             # Create backup before training
             self._log("info", "Creating database backup...")
             backup_path = self.backup.create_backup("pre_training")
@@ -295,6 +323,12 @@ class AutomationScheduler:
                 self._log("info", f"Backup created: {backup_path}")
             else:
                 self._log("warning", "Backup creation failed")
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Training stopped by user")
+                result["stopped"] = True
+                return result
             
             # Run training
             self._log("info", "Starting model training...")
@@ -306,21 +340,33 @@ class AutomationScheduler:
             result["success"] = success
             result["metrics"] = metrics
             result["markets_trained"] = metrics.get("trained_count", 0)
+            result["has_data"] = metrics.get("has_data", False)
             
+            # Handle training result based on new logic
+            # success=True means no errors, but may still have no data
             if success:
-                self._log("info", f"Training completed: {result['markets_trained']} markets trained")
-                
-                # Record model metrics
-                for market, market_metrics in metrics.get("markets", {}).items():
-                    if "samples" in market_metrics:
-                        self.metrics.record_model(
-                            market=market,
-                            cv_score=market_metrics.get("cv_score", 0),
-                            training_samples=market_metrics.get("samples", 0)
-                        )
+                if metrics.get("has_data"):
+                    # Models were actually trained
+                    self._log("info", f"Training completed: {result['markets_trained']} markets trained")
+                    
+                    # Record model metrics
+                    for market, market_metrics in metrics.get("markets", {}).items():
+                        if "samples" in market_metrics:
+                            self.metrics.record_model(
+                                market=market,
+                                cv_score=market_metrics.get("cv_score", 0),
+                                training_samples=market_metrics.get("samples", 0)
+                            )
+                else:
+                    # No data available for training - this is a warning, not an error
+                    no_data_reason = metrics.get("no_data_reason", "No training data available")
+                    self._log("warning", f"Training completed but no models trained: {no_data_reason}")
             else:
-                self._log("error", "Training failed")
-                result["errors"].append("Training failed")
+                # Actual errors occurred during training
+                training_errors = metrics.get("errors", [])
+                error_msg = "; ".join(training_errors) if training_errors else "Unknown error"
+                self._log("error", f"Training failed: {error_msg}")
+                result["errors"].extend(training_errors)
             
             self._last_training = datetime.now().isoformat()
             
@@ -391,6 +437,17 @@ class AutomationScheduler:
         
         self._log("info", "Stopping daemon...")
         self._stop_event.set()
+    
+    def stop_task(self) -> Dict[str, Any]:
+        """Stop the currently running task (collection or training)."""
+        if not self._current_task:
+            return {"success": False, "message": "No task is currently running"}
+        
+        task_name = self._current_task
+        self._log("info", f"Stopping {task_name}...")
+        self._stop_task_event.set()
+        
+        return {"success": True, "message": f"Stop signal sent to {task_name}"}
     
     def trigger_collection(self) -> Dict[str, Any]:
         """Manually trigger data collection (for dashboard). Runs in background thread."""

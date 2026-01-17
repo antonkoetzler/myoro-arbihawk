@@ -344,13 +344,26 @@ async def trigger_automation(request: TriggerRequest) -> Dict[str, Any]:
 
 @app.post("/api/automation/stop")
 async def stop_automation() -> Dict[str, Any]:
-    """Stop running automation tasks."""
+    """Stop running automation tasks (either daemon or current task)."""
     scheduler = get_scheduler()
-    scheduler.stop_daemon()
+    status = scheduler.get_status()
+    
+    # If a task is currently running, stop it
+    if status.get("current_task"):
+        result = scheduler.stop_task()
+        return result
+    
+    # Otherwise, try to stop daemon mode
+    if status.get("running"):
+        scheduler.stop_daemon()
+        return {
+            "success": True,
+            "message": "Stop signal sent to daemon"
+        }
     
     return {
-        "success": True,
-        "message": "Stop signal sent"
+        "success": False,
+        "message": "No task or daemon is currently running"
     }
 
 

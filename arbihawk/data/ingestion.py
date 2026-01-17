@@ -643,8 +643,9 @@ class DataIngestionService:
             
             # Create a temporary fixture ID based on teams and date
             # This will be matched to actual fixtures later
-            home_team = match.get("home_team", "")
-            away_team = match.get("away_team", "")
+            # FBref scraper uses "home_team_name" and "away_team_name"
+            home_team = match.get("home_team_name") or match.get("home_team", "")
+            away_team = match.get("away_team_name") or match.get("away_team", "")
             match_date = match.get("match_date") or match.get("start_time", "")
             
             # Generate a placeholder fixture ID for unmatched scores

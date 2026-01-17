@@ -20,12 +20,24 @@ const api = {
   stopAutomation: () => fetch('/api/automation/stop', { method: 'POST' }).then(r => r.json()),
 }
 
+// Messages that indicate a new task is starting (should clear logs)
+const TASK_START_PATTERNS = [
+  'Starting model training',
+  'Starting data collection',
+  'Starting full automation cycle'
+]
+
 // WebSocket hook for real-time logs
 function useWebSocketLogs() {
   const [logs, setLogs] = useState([])
   const [connected, setConnected] = useState(false)
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
+
+  // Function to clear logs (exposed for external use)
+  const clearLogs = useCallback(() => {
+    setLogs([])
+  }, [])
 
   const connect = useCallback(() => {
     // Determine WebSocket URL based on current location
@@ -47,7 +59,17 @@ function useWebSocketLogs() {
           // Ignore ping messages
           if (data.type === 'ping') return
           
+          // Check if this message indicates a new task starting
+          const isTaskStart = TASK_START_PATTERNS.some(
+            pattern => data.message?.includes(pattern)
+          )
+          
           setLogs(prev => {
+            // If a new task is starting, clear previous logs and start fresh
+            if (isTaskStart) {
+              return [data]
+            }
+            
             // Prevent duplicates by checking timestamp + message
             const isDuplicate = prev.some(
               log => log.timestamp === data.timestamp && log.message === data.message
@@ -93,15 +115,20 @@ function useWebSocketLogs() {
     }
   }, [connect])
 
-  return { logs, connected }
+  return { logs, connected, clearLogs }
 }
 
-// Tooltip component
-function Tooltip({ text, children }) {
+// Tooltip component - only shows when text is provided
+function Tooltip({ text, children, className = '' }) {
   const [show, setShow] = useState(false)
   
+  // Don't add tooltip behavior if there's no text
+  if (!text) {
+    return <div className={className}>{children}</div>
+  }
+  
   return (
-    <div className="relative inline-flex items-center">
+    <div className={`relative inline-flex items-center ${className}`}>
       <div
         onMouseEnter={() => setShow(true)}
         onMouseLeave={() => setShow(false)}
@@ -184,29 +211,77 @@ function getLogLevelColor(level) {
   }
 }
 
+// Define which queries are needed for each tab
+const TAB_QUERIES = {
+  overview: ['health', 'metrics', 'bankroll', 'bets', 'errors', 'dbStats', 'status'],
+  betting: ['bets', 'bankroll'],
+  automation: ['status'],
+  models: ['models'],
+  logs: [] // No polling needed - WebSocket handles it
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview')
   const queryClient = useQueryClient()
   const logsContainerRef = useRef(null)
   const [autoScroll, setAutoScroll] = useState(true)
 
-  // WebSocket logs
-  const { logs: wsLogs, connected: wsConnected } = useWebSocketLogs()
+  // WebSocket logs with clear function
+  const { logs: wsLogs, connected: wsConnected, clearLogs } = useWebSocketLogs()
 
-  // Queries
-  const { data: health } = useQuery({ queryKey: ['health'], queryFn: api.getHealth })
-  const { data: metrics } = useQuery({ queryKey: ['metrics'], queryFn: api.getMetricsSummary })
-  const { data: bankroll } = useQuery({ queryKey: ['bankroll'], queryFn: api.getBankroll })
-  const { data: bets } = useQuery({ queryKey: ['bets'], queryFn: () => api.getBets(50) })
-  const { data: models } = useQuery({ queryKey: ['models'], queryFn: api.getModels })
-  const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.getAutomationStatus })
-  const { data: errors } = useQuery({ queryKey: ['errors'], queryFn: api.getErrors })
-  const { data: dbStats } = useQuery({ queryKey: ['dbStats'], queryFn: api.getDbStats })
+  // Helper to determine if a query should be enabled and polling
+  const shouldPoll = (queryKey) => TAB_QUERIES[activeTab]?.includes(queryKey)
+
+  // Queries with tab-based polling
+  const { data: health } = useQuery({ 
+    queryKey: ['health'], 
+    queryFn: api.getHealth,
+    refetchInterval: shouldPoll('health') ? 30000 : false
+  })
+  const { data: metrics } = useQuery({ 
+    queryKey: ['metrics'], 
+    queryFn: api.getMetricsSummary,
+    refetchInterval: shouldPoll('metrics') ? 30000 : false
+  })
+  const { data: bankroll } = useQuery({ 
+    queryKey: ['bankroll'], 
+    queryFn: api.getBankroll,
+    refetchInterval: shouldPoll('bankroll') ? 30000 : false
+  })
+  const { data: bets } = useQuery({ 
+    queryKey: ['bets'], 
+    queryFn: () => api.getBets(50),
+    refetchInterval: shouldPoll('bets') ? 30000 : false
+  })
+  const { data: models } = useQuery({ 
+    queryKey: ['models'], 
+    queryFn: api.getModels,
+    refetchInterval: shouldPoll('models') ? 30000 : false
+  })
+  const { data: status } = useQuery({ 
+    queryKey: ['status'], 
+    queryFn: api.getAutomationStatus,
+    refetchInterval: shouldPoll('status') ? 30000 : false
+  })
+  const { data: errors } = useQuery({ 
+    queryKey: ['errors'], 
+    queryFn: api.getErrors,
+    refetchInterval: shouldPoll('errors') ? 30000 : false
+  })
+  const { data: dbStats } = useQuery({ 
+    queryKey: ['dbStats'], 
+    queryFn: api.getDbStats,
+    refetchInterval: shouldPoll('dbStats') ? 30000 : false
+  })
 
   // Mutations
   const triggerMutation = useMutation({
     mutationFn: api.triggerAutomation,
-    onSuccess: () => queryClient.invalidateQueries(['status'])
+    onSuccess: () => {
+      queryClient.invalidateQueries(['status'])
+      // Clear logs when a new task starts (backup - WebSocket should also handle this)
+      clearLogs()
+    }
   })
 
   const stopMutation = useMutation({
@@ -221,12 +296,33 @@ function App() {
     }
   }, [wsLogs, autoScroll])
 
+  // Scroll to bottom when logs tab is clicked
+  useEffect(() => {
+    if (activeTab === 'logs' && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+      setAutoScroll(true)
+    }
+  }, [activeTab])
+
+  // Invalidate and refetch queries for the new tab when switching
+  useEffect(() => {
+    const queriesToRefetch = TAB_QUERIES[activeTab] || []
+    queriesToRefetch.forEach(key => {
+      queryClient.invalidateQueries([key])
+    })
+  }, [activeTab, queryClient])
+
   // Handle manual scroll to disable auto-scroll
   const handleLogsScroll = (e) => {
     const container = e.target
     const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50
     setAutoScroll(isAtBottom)
   }
+  
+  // Determine if buttons should be disabled and get tooltip text
+  const isTaskRunning = !!status?.current_task
+  const taskButtonTooltip = isTaskRunning ? 'You can only run one task at a time' : ''
+  const stopButtonTooltip = !isTaskRunning ? 'No task is currently running' : ''
 
   const formatPercent = (val) => val ? `${(val * 100).toFixed(1)}%` : '0%'
   const formatMoney = (val) => val ? `$${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'
@@ -480,27 +576,33 @@ function App() {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => triggerMutation.mutate('collect')}
-                disabled={triggerMutation.isPending || status?.current_task}
-                className="btn-primary flex items-center gap-2 disabled:opacity-50"
-              >
-                <Play size={16} /> Run Collection
-              </button>
-              <button
-                onClick={() => triggerMutation.mutate('train')}
-                disabled={triggerMutation.isPending || status?.current_task}
-                className="btn-primary flex items-center gap-2 disabled:opacity-50"
-              >
-                <RefreshCw size={16} /> Run Training
-              </button>
-              <button
-                onClick={() => stopMutation.mutate()}
-                disabled={!status?.running}
-                className="btn-danger flex items-center gap-2 disabled:opacity-50"
-              >
-                <Square size={16} /> Stop
-              </button>
+              <Tooltip text={taskButtonTooltip}>
+                <button
+                  onClick={() => triggerMutation.mutate('collect')}
+                  disabled={triggerMutation.isPending || isTaskRunning}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Play size={16} /> Run Collection
+                </button>
+              </Tooltip>
+              <Tooltip text={taskButtonTooltip}>
+                <button
+                  onClick={() => triggerMutation.mutate('train')}
+                  disabled={triggerMutation.isPending || isTaskRunning}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw size={16} /> Run Training
+                </button>
+              </Tooltip>
+              <Tooltip text={stopButtonTooltip}>
+                <button
+                  onClick={() => stopMutation.mutate()}
+                  disabled={!isTaskRunning || stopMutation.isPending}
+                  className="btn-danger flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Square size={16} /> Stop
+                </button>
+              </Tooltip>
             </div>
           </div>
         </div>

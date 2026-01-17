@@ -24,6 +24,9 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
     
     Returns:
         Tuple of (success: bool, metrics: dict)
+        - success: True if training completed without errors (even if no data)
+        - metrics.has_data: True if at least one model was trained
+        - metrics.errors: List of actual errors encountered
     """
     print_header("Model Training")
     
@@ -35,10 +38,16 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
     models_dir.mkdir(parents=True, exist_ok=True)
     
     trained_count = 0
+    no_data_count = 0
+    actual_errors = []  # Track actual errors (exceptions, failures) vs no-data situations
+    
     metrics = {
         "trained_at": datetime.now().isoformat(),
         "markets": {},
-        "total_samples": 0
+        "total_samples": 0,
+        "has_data": False,  # Will be True if any models were trained
+        "errors": [],  # List of actual error messages
+        "no_data_reason": None  # Explanation if no data available
     }
     
     for market in markets:
@@ -49,13 +58,16 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
         try:
             X, y = feature_engineer.create_training_data(market=market)
         except Exception as e:
-            print_error(f"Error creating features: {e}")
-            metrics["markets"][market] = {"error": str(e)}
+            error_msg = f"Error creating features for {market}: {e}"
+            print_error(error_msg)
+            metrics["markets"][market] = {"error": str(e), "error_type": "feature_creation"}
+            actual_errors.append(error_msg)
             continue
         
         if len(X) == 0 or len(y) == 0:
             print_warning(f"No training data available. Skipping...")
-            metrics["markets"][market] = {"error": "No training data"}
+            metrics["markets"][market] = {"skipped": True, "reason": "No training data"}
+            no_data_count += 1
             continue
         
         print_info(f"Training data: {len(X)} samples, {len(X.columns)} features")
@@ -67,8 +79,10 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
         try:
             predictor.train(X, y)
         except Exception as e:
-            print_error(f"Error training model: {e}")
-            metrics["markets"][market] = {"error": str(e)}
+            error_msg = f"Error training model for {market}: {e}"
+            print_error(error_msg)
+            metrics["markets"][market] = {"error": str(e), "error_type": "training"}
+            actual_errors.append(error_msg)
             continue
         
         # Save model
@@ -86,13 +100,27 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
             }
             metrics["total_samples"] += len(X)
         except Exception as e:
-            print_error(f"Error saving model: {e}")
-            metrics["markets"][market] = {"error": str(e)}
+            error_msg = f"Error saving model for {market}: {e}"
+            print_error(error_msg)
+            metrics["markets"][market] = {"error": str(e), "error_type": "save"}
+            actual_errors.append(error_msg)
             continue
     
-    success = trained_count > 0
+    # Determine success - success means no actual errors occurred
+    # (not having data is NOT an error, it's just a warning condition)
+    success = len(actual_errors) == 0
+    has_data = trained_count > 0
+    
     metrics["trained_count"] = trained_count
     metrics["total_markets"] = len(markets)
+    metrics["has_data"] = has_data
+    metrics["errors"] = actual_errors
+    
+    # Set no_data_reason if applicable
+    if no_data_count == len(markets):
+        metrics["no_data_reason"] = "No completed matches with scores available for training"
+    elif no_data_count > 0:
+        metrics["no_data_reason"] = f"{no_data_count} markets skipped due to insufficient data"
     
     print_success(f"Trained {trained_count}/{len(markets)} models")
     return success, metrics
