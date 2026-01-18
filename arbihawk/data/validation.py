@@ -70,8 +70,8 @@ BETANO_ROOT_SCHEMA = {
     "items": BETANO_LEAGUE_SCHEMA
 }
 
-# FBref match schema
-FBREF_MATCH_SCHEMA = {
+# Match score schema (Flashscore/Livescore)
+MATCH_SCORE_SCHEMA = {
     "type": "object",
     "required": ["home_team_name", "away_team_name"],
     "properties": {
@@ -87,14 +87,14 @@ FBREF_MATCH_SCHEMA = {
     }
 }
 
-# FBref root schema
-FBREF_ROOT_SCHEMA = {
+# Match score root schema
+MATCH_SCORE_ROOT_SCHEMA = {
     "type": "object",
     "required": ["matches"],
     "properties": {
         "matches": {
             "type": "array",
-            "items": FBREF_MATCH_SCHEMA
+            "items": MATCH_SCORE_SCHEMA
         },
         "total_matches": {"type": "integer"},
         "season": {"type": "string"}
@@ -136,8 +136,8 @@ class DataValidator:
         if not result.valid:
             print(f"Validation errors: {result.errors}")
         
-        # Validate FBref data
-        result = validator.validate_fbref(fbref_json)
+        # Validate match score data
+        result = validator.validate_match_scores(match_score_json)
     """
     
     def __init__(self, strict: bool = False):
@@ -238,12 +238,12 @@ class DataValidator:
         
         return errors
     
-    def validate_fbref(self, data: Any) -> ValidationResult:
+    def validate_match_scores(self, data: Any) -> ValidationResult:
         """
-        Validate FBref scraper output.
+        Validate match score scraper output (Flashscore/Livescore).
         
         Args:
-            data: Parsed JSON data from FBref scraper
+            data: Parsed JSON data from match score scraper
             
         Returns:
             ValidationResult with validation status and any errors/warnings
@@ -269,7 +269,7 @@ class DataValidator:
         
         # Validate each match
         for i, match in enumerate(matches):
-            match_errors = self._validate_fbref_match(match, i)
+            match_errors = self._validate_match_score(match, i)
             errors.extend(match_errors)
         
         self._validation_count += 1
@@ -279,8 +279,8 @@ class DataValidator:
         valid = len(errors) == 0 and (not self.strict or len(warnings) == 0)
         return ValidationResult(valid, errors, warnings)
     
-    def _validate_fbref_match(self, match: Dict, index: int) -> List[str]:
-        """Validate a single FBref match."""
+    def _validate_match_score(self, match: Dict, index: int) -> List[str]:
+        """Validate a single match score."""
         errors = []
         prefix = f"matches[{index}]"
         
@@ -310,7 +310,7 @@ class DataValidator:
         
         Args:
             json_str: JSON string to parse and validate
-            source: Source identifier ("betano" or "fbref")
+            source: Source identifier ("betano", "flashscore", or "livescore")
             
         Returns:
             Tuple of (parsed_data, ValidationResult)
@@ -324,8 +324,8 @@ class DataValidator:
         # Validate based on source
         if source == "betano":
             result = self.validate_betano(data)
-        elif source == "fbref":
-            result = self.validate_fbref(data)
+        elif source in ["flashscore", "livescore"]:
+            result = self.validate_match_scores(data)
         else:
             result = ValidationResult(False, [f"Unknown source: {source}"])
         

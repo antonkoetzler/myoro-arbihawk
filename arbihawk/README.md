@@ -6,7 +6,7 @@ The arbitrage hawk - A neural network-based betting prediction and recommendatio
 
 Arbihawk uses machine learning (XGBoost) to predict match outcomes and identify value bets based on expected value calculations. The system:
 
-- Collects match data and odds from scrapers (Betano, FBref)
+- Collects match data and odds from scrapers (Betano, Flashscore, Livescore)
 - Stores data locally in SQLite
 - Trains models on historical data
 - Identifies value bets with positive expected value

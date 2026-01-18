@@ -1,5 +1,5 @@
 """
-Score matching service for linking FBref scores to Betano fixtures.
+Score matching service for linking match scores (Flashscore/Livescore) to Betano fixtures.
 Uses fuzzy team name matching and time proximity.
 """
 
@@ -19,7 +19,7 @@ import config
 
 class ScoreMatcher:
     """
-    Matches FBref scores to Betano fixtures.
+    Matches match scores (Flashscore/Livescore) to Betano fixtures.
     
     Uses fuzzy team name matching and time proximity to find
     corresponding fixtures for incoming scores.

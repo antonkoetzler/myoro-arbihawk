@@ -71,7 +71,8 @@ class AutomationScheduler:
         # Scraper paths (relative to arbihawk root)
         self.scrapers_dir = Path(__file__).parent.parent / "scrapers"
         self.betano_script = self.scrapers_dir / "src" / "sportsbooks" / "betano.py"
-        self.fbref_script = self.scrapers_dir / "src" / "sports_data" / "fbref.py"
+        self.flashscore_script = self.scrapers_dir / "src" / "sports_data" / "flashscore.py"
+        self.livescore_script = self.scrapers_dir / "src" / "sports_data" / "livescore.py"
         
         # Scrapers venv Python interpreter
         if platform.system() == "Windows":
@@ -127,10 +128,12 @@ class AutomationScheduler:
         
         1. Execute Betano scraper
         2. Ingest Betano data
-        3. Execute FBref scraper
-        4. Ingest FBref data
-        5. Match scores to fixtures
-        6. Settle bets
+        3. Execute Flashscore scraper (primary)
+        4. Ingest Flashscore data
+        5. Execute Livescore scraper (fallback if Flashscore fails)
+        6. Ingest Livescore data
+        7. Match scores to fixtures
+        8. Settle bets
         
         Returns:
             Result dict with collection stats
@@ -142,7 +145,8 @@ class AutomationScheduler:
         result = {
             "success": True,
             "betano": {"success": False, "records": 0},
-            "fbref": {"success": False, "records": 0},
+            "flashscore": {"success": False, "records": 0},
+            "livescore": {"success": False, "records": 0},
             "matching": {"matched": 0, "unmatched": 0},
             "settlement": {"settled": 0},
             "errors": []
@@ -178,34 +182,94 @@ class AutomationScheduler:
                 result["stopped"] = True
                 return result
             
-            # Run FBref scraper
-            self._log("info", "Starting FBref scraper...")
+            # Run Flashscore scraper (primary)
+            self._log("info", "Starting Flashscore scraper...")
             try:
-                fbref_result = self._run_scraper("fbref")
-                if not fbref_result.get("success"):
-                    self._log("error", f"FBref failed: {fbref_result.get('error', 'Unknown error')}")
+                flashscore_result = self._run_scraper("flashscore")
+                if not flashscore_result.get("success"):
+                    self._log("error", f"Flashscore failed: {flashscore_result.get('error', 'Unknown error')}")
             except Exception as e:
-                self._log("error", f"FBref exception: {e}")
-                fbref_result = {"success": False, "error": str(e), "records": 0}
-            result["fbref"] = fbref_result
+                self._log("error", f"Flashscore exception: {e}")
+                flashscore_result = {"success": False, "error": str(e), "records": 0}
+            result["flashscore"] = flashscore_result
             
-            if fbref_result.get("success"):
-                self._log("info", f"FBref: {fbref_result.get('records', 0)} records ingested")
+            if flashscore_result.get("success"):
+                self._log("info", f"Flashscore: {flashscore_result.get('records', 0)} records ingested")
             else:
-                self._log("error", f"FBref failed: {fbref_result.get('error', 'Unknown')}")
-                result["errors"].append(f"FBref: {fbref_result.get('error', 'Unknown')}")
+                self._log("warning", f"Flashscore failed: {flashscore_result.get('error', 'Unknown')}")
+                result["errors"].append(f"Flashscore: {flashscore_result.get('error', 'Unknown')}")
             
             # Check if stopped
             if self._stop_task_event.is_set():
-                self._log("info", "Collection stopped by user after FBref")
+                self._log("info", "Collection stopped by user after Flashscore")
                 result["stopped"] = True
                 return result
             
-            # Match scores to fixtures
-            self._log("info", "Matching scores to fixtures...")
-            # Get unmatched FBref scores and try to match them
-            # For now, matching is done during FBref ingestion
-            result["matching"] = {"matched": 0, "unmatched": 0}
+            # Run Livescore scraper (fallback if Flashscore failed)
+            if not flashscore_result.get("success"):
+                self._log("info", "Flashscore failed, trying Livescore as fallback...")
+                try:
+                    livescore_result = self._run_scraper("livescore")
+                    if not livescore_result.get("success"):
+                        self._log("error", f"Livescore failed: {livescore_result.get('error', 'Unknown error')}")
+                except Exception as e:
+                    self._log("error", f"Livescore exception: {e}")
+                    livescore_result = {"success": False, "error": str(e), "records": 0}
+                result["livescore"] = livescore_result
+                
+                if livescore_result.get("success"):
+                    self._log("info", f"Livescore: {livescore_result.get('records', 0)} records ingested")
+                else:
+                    self._log("error", f"Livescore failed: {livescore_result.get('error', 'Unknown')}")
+                    result["errors"].append(f"Livescore: {livescore_result.get('error', 'Unknown')}")
+            else:
+                # Flashscore succeeded, skip Livescore
+                result["livescore"] = {"success": False, "records": 0, "skipped": True, "reason": "Flashscore succeeded"}
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Collection stopped by user after score scrapers")
+                result["stopped"] = True
+                return result
+            
+            # Match scores to fixtures (for any unmatched scores)
+            self._log("info", "Matching remaining unmatched scores to fixtures...")
+            try:
+                # Get all scores with temp fixture IDs (unmatched)
+                scores_df = self.db.get_scores()
+                unmatched_scores = []
+                
+                for _, score_row in scores_df.iterrows():
+                    fixture_id = score_row.get('fixture_id', '')
+                    # Check if it's a temp ID (starts with flashscore_ or livescore_)
+                    if fixture_id.startswith('flashscore_') or fixture_id.startswith('livescore_'):
+                        # Parse temp ID: {source}_{home_team}_{away_team}_{match_date}
+                        parts = fixture_id.split('_', 3)  # Split into [source, home_team, away_team, rest]
+                        if len(parts) >= 4:
+                            source_part = parts[0]
+                            # Reconstruct team names (they may contain underscores)
+                            # Last part is date, everything else is teams
+                            date_part = parts[-1]
+                            team_part = '_'.join(parts[1:-1])
+                            # Try to split teams (this is approximate - teams may have underscores)
+                            # For now, we'll skip this complex parsing and rely on ingestion-time matching
+                            # Most scores should be matched during ingestion
+                            pass
+                
+                # Count matched vs unmatched
+                total_scores = len(scores_df)
+                matched_scores = len(scores_df[~scores_df['fixture_id'].str.startswith(('flashscore_', 'livescore_'), na=False)])
+                unmatched_count = total_scores - matched_scores
+                
+                result["matching"] = {
+                    "matched": matched_scores,
+                    "unmatched": unmatched_count,
+                    "match_rate": matched_scores / total_scores if total_scores > 0 else 0
+                }
+                self._log("info", f"Score matching: {matched_scores} matched, {unmatched_count} unmatched")
+            except Exception as e:
+                self._log("error", f"Matching check failed: {e}")
+                result["matching"] = {"matched": 0, "unmatched": 0, "error": str(e)}
             
             # Settle pending bets
             self._log("info", "Settling pending bets...")
@@ -225,6 +289,21 @@ class AutomationScheduler:
                 success=result["betano"].get("success", False),
                 duration_ms=duration_ms
             )
+            # Record score scraper metrics
+            if result["flashscore"].get("success"):
+                self.metrics.record_ingestion(
+                    source="flashscore",
+                    records=result["flashscore"].get("records", 0),
+                    success=True,
+                    duration_ms=duration_ms
+                )
+            elif result.get("livescore", {}).get("success"):
+                self.metrics.record_ingestion(
+                    source="livescore",
+                    records=result["livescore"].get("records", 0),
+                    success=True,
+                    duration_ms=duration_ms
+                )
             
             self._last_collection = datetime.now().isoformat()
             self._log("info", f"Collection completed in {duration_ms/1000:.1f}s")
@@ -244,9 +323,12 @@ class AutomationScheduler:
         if source == "betano":
             script_path = self.betano_script
             args = self.scraper_args.get("betano", [])
-        elif source == "fbref":
-            script_path = self.fbref_script
-            args = self.scraper_args.get("fbref", [])
+        elif source == "flashscore":
+            script_path = self.flashscore_script
+            args = self.scraper_args.get("flashscore", ["--headless"])
+        elif source == "livescore":
+            script_path = self.livescore_script
+            args = self.scraper_args.get("livescore", ["--no-proxy"])
         else:
             return {"success": False, "error": f"Unknown source: {source}"}
         

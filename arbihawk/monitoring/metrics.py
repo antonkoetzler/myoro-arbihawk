@@ -58,7 +58,7 @@ class MetricsCollector:
         Record ingestion metrics.
         
         Args:
-            source: Data source (betano/fbref)
+            source: Data source (betano/flashscore/livescore)
             records: Number of records processed
             success: Whether ingestion succeeded
             duration_ms: Processing time in milliseconds
