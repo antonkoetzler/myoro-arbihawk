@@ -36,7 +36,7 @@ Outputs JSON with leagues, fixtures, and odds:
 ]
 ```
 
-### FBref Scraper
+### Match Score Scrapers (Flashscore/Livescore)
 
 Outputs JSON with match scores:
 
@@ -79,7 +79,7 @@ Data is validated against JSON schemas before ingestion:
 
 ## Matching Algorithm
 
-FBref scores are matched to Betano fixtures using:
+Match scores (Flashscore/Livescore) are matched to Betano fixtures using:
 
 1. **Team Name Matching**: Fuzzy matching with rapidfuzz
 2. **Time Proximity**: Within configurable tolerance (default 2 hours)

@@ -7,7 +7,8 @@ The Data Collector manages data ingestion from external scrapers into the SQLite
 ## Data Sources
 
 - **Betano Scraper** - Fixtures and odds from Betano sportsbook
-- **FBref Scraper** - Match scores and statistics
+- **Flashscore Scraper** - Match scores and results (primary)
+- **Livescore Scraper** - Match scores and results (fallback)
 
 ## How It Works
 
@@ -15,7 +16,7 @@ The Data Collector manages data ingestion from external scrapers into the SQLite
 2. Arbihawk reads the JSON via stdin or subprocess
 3. Data is validated against JSON schemas
 4. Valid data is stored in SQLite database
-5. FBref scores are matched to Betano fixtures
+5. Match scores are matched to Betano fixtures using fuzzy team name matching
 
 ## Usage
 

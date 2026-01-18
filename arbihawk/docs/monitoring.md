@@ -9,7 +9,8 @@ The monitoring system tracks all aspects of the prediction system.
 ### Ingestion Metrics
 
 - `records_betano`: Records processed from Betano
-- `records_fbref`: Records processed from FBref
+- `records_flashscore`: Records processed from Flashscore
+- `records_livescore`: Records processed from Livescore
 - `success_betano`: Ingestion success (1/0)
 - `duration_betano`: Processing time in ms
 

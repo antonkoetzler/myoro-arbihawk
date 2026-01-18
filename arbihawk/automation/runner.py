@@ -23,7 +23,9 @@ def run_collect(scheduler: AutomationScheduler) -> int:
     if result["success"]:
         print_success(f"Collection completed")
         print_info(f"  Betano: {result['betano'].get('records', 0)} records")
-        print_info(f"  FBref: {result['fbref'].get('records', 0)} records")
+        print_info(f"  Flashscore: {result['flashscore'].get('records', 0)} records")
+        if result.get('livescore', {}).get('records', 0) > 0:
+            print_info(f"  Livescore: {result['livescore'].get('records', 0)} records")
         print_info(f"  Settled: {result['settlement'].get('settled', 0)} bets")
         return 0
     else:

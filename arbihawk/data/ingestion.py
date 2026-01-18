@@ -49,7 +49,7 @@ class DataIngestionService:
         Ingest data from stdin.
         
         Args:
-            source: Source identifier ("betano" or "fbref")
+            source: Source identifier ("betano", "flashscore", or "livescore")
             
         Returns:
             Dict with ingestion results
@@ -75,7 +75,7 @@ class DataIngestionService:
         
         Args:
             command: Command to execute (str or list of command parts)
-            source: Source identifier ("betano" or "fbref")
+            source: Source identifier ("betano", "flashscore", or "livescore")
             args: Additional command arguments (deprecated, use command as list)
             timeout: Timeout in seconds
             log_callback: Optional callback function(log_level, message) for real-time logging
@@ -350,7 +350,7 @@ class DataIngestionService:
                                 # Check if this looks like a root structure (not a nested object)
                                 # Root structures have specific top-level keys
                                 if isinstance(parsed, dict):
-                                    # For fbref, root should have "matches" key
+                                    # For match score scrapers, root should have "matches" key
                                     # For betano root objects, should have "league_id" or "fixtures"
                                     # Prioritize structures with known root keys
                                     if "matches" in parsed or "league_id" in parsed or "fixtures" in parsed:
@@ -485,7 +485,7 @@ class DataIngestionService:
         
         Args:
             filepath: Path to JSON file
-            source: Source identifier ("betano" or "fbref")
+            source: Source identifier ("betano", "flashscore", or "livescore")
             
         Returns:
             Dict with ingestion results
@@ -553,8 +553,8 @@ class DataIngestionService:
         # Ingest based on source
         if source == "betano":
             records = self._ingest_betano(data)
-        elif source == "fbref":
-            records = self._ingest_fbref(data)
+        elif source in ["flashscore", "livescore"]:
+            records = self._ingest_match_scores(data, source)
         else:
             return {
                 "success": False,
@@ -626,12 +626,16 @@ class DataIngestionService:
         
         return total_fixtures
     
-    def _ingest_fbref(self, data: Dict) -> int:
-        """Ingest FBref data into database."""
+    def _ingest_match_scores(self, data: Dict, source: str) -> int:
+        """Ingest match score data (Flashscore/Livescore) into database."""
         matches = data.get("matches", [])
         
-        # FBref data is stored as scores, matched to fixtures later
+        # Try to match scores to fixtures immediately during ingestion
+        from data.matchers import ScoreMatcher
+        matcher = ScoreMatcher(self.db)
+        
         scores_inserted = 0
+        matched_count = 0
         
         for match in matches:
             # Only process completed matches with scores
@@ -641,26 +645,40 @@ class DataIngestionService:
             if home_score is None or away_score is None:
                 continue
             
-            # Create a temporary fixture ID based on teams and date
-            # This will be matched to actual fixtures later
-            # FBref scraper uses "home_team_name" and "away_team_name"
             home_team = match.get("home_team_name") or match.get("home_team", "")
             away_team = match.get("away_team_name") or match.get("away_team", "")
-            match_date = match.get("match_date") or match.get("start_time", "")
+            match_time = match.get("start_time") or match.get("match_date", "")
             
-            # Generate a placeholder fixture ID for unmatched scores
-            # This will be replaced during matching
-            temp_fixture_id = f"fbref_{home_team}_{away_team}_{match_date}".replace(" ", "_")
+            # Try to match to existing fixture
+            fixture_id = matcher.match_score(
+                home_team=home_team,
+                away_team=away_team,
+                match_time=match_time
+            )
             
-            # Store as a score record
-            score_data = {
-                "fixture_id": temp_fixture_id,
-                "home_score": home_score,
-                "away_score": away_score,
-                "status": "finished"
-            }
+            if fixture_id:
+                # Matched to existing fixture - use real fixture ID
+                score_data = {
+                    "fixture_id": fixture_id,
+                    "home_score": home_score,
+                    "away_score": away_score,
+                    "status": "finished"
+                }
+                self.db.insert_score(fixture_id, score_data)
+                matched_count += 1
+            else:
+                # No match found - store with temp ID for later matching
+                match_date = match.get("match_date") or match_time.split('T')[0] if 'T' in match_time else match_time
+                temp_fixture_id = f"{source}_{home_team}_{away_team}_{match_date}".replace(" ", "_")
+                
+                score_data = {
+                    "fixture_id": temp_fixture_id,
+                    "home_score": home_score,
+                    "away_score": away_score,
+                    "status": "finished"
+                }
+                self.db.insert_score(temp_fixture_id, score_data)
             
-            self.db.insert_score(temp_fixture_id, score_data)
             scores_inserted += 1
         
         return scores_inserted
@@ -671,7 +689,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Ingest data from scrapers')
-    parser.add_argument('source', choices=['betano', 'fbref'],
+    parser.add_argument('source', choices=['betano', 'flashscore', 'livescore'],
                         help='Data source')
     parser.add_argument('--file', '-f', type=str,
                         help='Input file path (default: read from stdin)')

@@ -17,7 +17,7 @@ Initializes git submodules, creates scrapers venv, and installs scrapers require
 ### Automation
 
 **Automation: Collect Data**  
-Runs data collection (Betano + FBref)
+Runs data collection (Betano + Flashscore/Livescore)
 
 **Automation: Train Models**  
 Trains all prediction models

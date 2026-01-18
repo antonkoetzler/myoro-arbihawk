@@ -20,10 +20,11 @@ When running collection, the system:
 
 1. Executes Betano scraper to fetch fixtures and odds
 2. Ingests Betano data into the database with validation
-3. Executes FBref scraper to fetch match scores
-4. Ingests FBref data into the database
-5. Matches scores to fixtures using fuzzy team name matching
-6. Settles any pending bets based on completed match results
+3. Executes Flashscore scraper to fetch match scores (primary)
+4. If Flashscore fails, executes Livescore scraper as fallback
+5. Ingests match score data into the database
+6. Matches scores to fixtures using fuzzy team name matching
+7. Settles any pending bets based on completed match results
 
 ## Training Cycle
 
@@ -47,8 +48,9 @@ Edit `config/automation.json` to configure automation behavior:
   "incremental_mode": true,
   "matching_tolerance_hours": 2,
   "scraper_args": {
-    "betano": ["--all-leagues"],
-    "fbref": []
+    "betano": [],
+    "flashscore": ["--headless"],
+    "livescore": ["--no-proxy"]
   }
 }
 ```
