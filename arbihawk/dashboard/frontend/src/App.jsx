@@ -139,31 +139,23 @@ function Tooltip({ text, children, className = '', position = 'auto' }) {
     const containerRect = container.getBoundingClientRect()
     
     const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
     const margin = 8
     
-    let style = {}
-    let arrowClass = 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900'
-    let tooltipClass = 'bottom-full left-1/2 -translate-x-1/2 mb-2'
+    let style = { placement: 'top', xAlign: 'center' }
     
-    // Check if tooltip would overflow top
+    // Check if tooltip would overflow top - place below instead
     if (tooltipRect.top < margin) {
-      tooltipClass = 'top-full left-1/2 -translate-x-1/2 mt-2'
-      arrowClass = 'absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900'
+      style.placement = 'bottom'
     }
     
     // Check horizontal overflow
     const centerX = containerRect.left + containerRect.width / 2
-    const tooltipWidth = tooltipRect.width
-    const leftBound = tooltipWidth / 2
-    const rightBound = viewportWidth - tooltipWidth / 2
+    const tooltipHalfWidth = tooltipRect.width / 2
     
-    if (centerX < leftBound) {
-      style.left = '0'
-      style.transform = 'translateX(0)'
-    } else if (centerX > rightBound) {
-      style.right = '0'
-      style.transform = 'translateX(0)'
+    if (centerX - tooltipHalfWidth < margin) {
+      style.xAlign = 'left'
+    } else if (centerX + tooltipHalfWidth > viewportWidth - margin) {
+      style.xAlign = 'right'
     }
     
     setTooltipStyle(style)
@@ -189,11 +181,20 @@ function Tooltip({ text, children, className = '', position = 'auto' }) {
       {show && (
         <div 
           ref={tooltipRef}
-          style={tooltipStyle}
-          className={`absolute px-2 py-1 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal max-w-xs z-50 border border-slate-700 shadow-lg ${tooltipStyle.transform ? '' : 'left-1/2 -translate-x-1/2'} ${tooltipStyle.transform ? '' : 'bottom-full mb-2'}`}
+          className={`absolute px-2 py-1 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal max-w-xs z-50 border border-slate-700 shadow-lg ${
+            tooltipStyle.placement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
+          } ${
+            tooltipStyle.xAlign === 'left' ? 'left-0' : 
+            tooltipStyle.xAlign === 'right' ? 'right-0' : 
+            'left-1/2 -translate-x-1/2'
+          }`}
         >
           {text}
-          <div className={`absolute ${tooltipStyle.transform ? 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900' : 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900'}`} />
+          <div className={`absolute ${
+            tooltipStyle.placement === 'bottom' 
+              ? 'bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900' 
+              : 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900'
+          }`} />
         </div>
       )}
     </div>
