@@ -181,7 +181,7 @@ function Tooltip({ text, children, className = '', position = 'auto' }) {
       {show && (
         <div 
           ref={tooltipRef}
-          className={`absolute px-2 py-1 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal max-w-xs z-50 border border-slate-700 shadow-lg ${
+          className={`absolute px-3 py-2 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal min-w-[200px] max-w-xs z-50 border border-slate-700 shadow-lg ${
             tooltipStyle.placement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
           } ${
             tooltipStyle.xAlign === 'left' ? 'left-0' : 
