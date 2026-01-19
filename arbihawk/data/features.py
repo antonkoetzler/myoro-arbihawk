@@ -313,7 +313,9 @@ class FeatureEngineer:
                 
                 labels_list.append(label)
             except Exception as e:
-                print(f"Error creating features for fixture {row['fixture_id']}: {e}")
+                # Log error but continue processing other fixtures
+                import logging
+                logging.warning(f"Error creating features for fixture {row['fixture_id']}: {e}")
                 continue
         
         if len(features_list) == 0:

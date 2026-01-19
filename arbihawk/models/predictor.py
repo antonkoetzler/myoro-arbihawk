@@ -44,7 +44,8 @@ class BasePredictor(ABC):
             pickle.dump({
                 'model': self.model,
                 'label_encoder': self.label_encoder,
-                'is_trained': self.is_trained
+                'is_trained': self.is_trained,
+                'cv_score': getattr(self, 'cv_score', 0.0)
             }, f)
     
     def load(self, filepath: str) -> None:
@@ -54,6 +55,7 @@ class BasePredictor(ABC):
             self.model = data['model']
             self.label_encoder = data['label_encoder']
             self.is_trained = data['is_trained']
+            self.cv_score = data.get('cv_score', 0.0)
 
 
 class BettingPredictor(BasePredictor):
@@ -69,6 +71,7 @@ class BettingPredictor(BasePredictor):
             random_state=42,
             eval_metric='mlogloss'
         )
+        self.cv_score = 0.0  # Cross-validation score
     
     def train(self, features: pd.DataFrame, labels: pd.Series) -> None:
         """Train the model on historical match data."""
@@ -90,9 +93,14 @@ class BettingPredictor(BasePredictor):
         
         if n_samples >= 10:
             scores = cross_val_score(self.model, features, y_encoded, cv=cv_folds, scoring='accuracy')
-            print(f"Cross-validation accuracy ({cv_folds}-fold): {scores.mean():.3f} (+/- {scores.std() * 2:.3f})")
+            cv_mean = scores.mean()
+            cv_std = scores.std()
+            print(f"Cross-validation accuracy ({cv_folds}-fold): {cv_mean:.3f} (+/- {cv_std * 2:.3f})")
+            self.cv_score = cv_mean
         else:
             print(f"Warning: Too few samples ({n_samples}) for cross-validation. Model trained on all data.")
+            # Default score when CV not possible (50% accuracy baseline)
+            self.cv_score = 0.5
         
         self.is_trained = True
     

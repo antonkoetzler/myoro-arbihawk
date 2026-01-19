@@ -67,7 +67,7 @@ class DataIngestionService:
     
     def ingest_from_subprocess(self, command, source: str,
                                 args: List[str] = None,
-                                timeout: int = 300,
+                                timeout: Optional[int] = None,
                                 log_callback: Optional[Callable[[str, str], None]] = None) -> Dict[str, Any]:
         """
         Execute scraper subprocess and ingest its output.
@@ -77,7 +77,7 @@ class DataIngestionService:
             command: Command to execute (str or list of command parts)
             source: Source identifier ("betano", "flashscore", or "livescore")
             args: Additional command arguments (deprecated, use command as list)
-            timeout: Timeout in seconds
+            timeout: Timeout in seconds (None = no timeout, run until completion)
             log_callback: Optional callback function(log_level, message) for real-time logging
             
         Returns:
@@ -156,8 +156,8 @@ class DataIngestionService:
                         # Check if process is done and reader is complete
                         if process.poll() is not None and read_complete.is_set():
                             break
-                        # Check timeout
-                        if time.time() - start_time > timeout:
+                        # Check timeout only if set
+                        if timeout is not None and time.time() - start_time > timeout:
                             process.kill()
                             raise subprocess.TimeoutExpired(full_command, timeout)
                         continue
@@ -271,11 +271,12 @@ class DataIngestionService:
             
         except subprocess.TimeoutExpired:
             if log_callback:
-                log_callback("error", f"Scraper timed out after {timeout}s")
+                timeout_msg = f"{timeout}s" if timeout is not None else "timeout"
+                log_callback("error", f"Scraper timed out after {timeout_msg}")
             process.kill()
             return {
                 "success": False,
-                "error": f"Subprocess timed out after {timeout}s",
+                "error": f"Subprocess timed out after {timeout}s" if timeout is not None else "Subprocess timed out",
                 "records": 0
             }
         except Exception as e:
@@ -656,28 +657,44 @@ class DataIngestionService:
                 match_time=match_time
             )
             
+            # Determine fixture ID (matched or temp)
             if fixture_id:
                 # Matched to existing fixture - use real fixture ID
-                score_data = {
-                    "fixture_id": fixture_id,
-                    "home_score": home_score,
-                    "away_score": away_score,
-                    "status": "finished"
-                }
-                self.db.insert_score(fixture_id, score_data)
+                final_fixture_id = fixture_id
                 matched_count += 1
             else:
                 # No match found - store with temp ID for later matching
                 match_date = match.get("match_date") or match_time.split('T')[0] if 'T' in match_time else match_time
-                temp_fixture_id = f"{source}_{home_team}_{away_team}_{match_date}".replace(" ", "_")
+                final_fixture_id = f"{source}_{home_team}_{away_team}_{match_date}".replace(" ", "_")
+            
+            # Insert score
+            score_data = {
+                "fixture_id": final_fixture_id,
+                "home_score": home_score,
+                "away_score": away_score,
+                "status": "finished"
+            }
+            self.db.insert_score(final_fixture_id, score_data)
+            
+            # Insert odds if present (from FlashScore/LiveScore scrapers)
+            odds = match.get("odds", [])
+            if odds:
+                odds_data = []
+                for odd in odds:
+                    # Convert FlashScore/LiveScore odds format to database format
+                    odds_data.append({
+                        "fixture_id": final_fixture_id,
+                        "bookmaker_id": str(odd.get("bookmaker_id", "")),
+                        "bookmaker_name": odd.get("bookmaker_name", ""),
+                        "market_id": str(odd.get("market_type", odd.get("market_name", ""))),
+                        "market_name": odd.get("market_name", ""),
+                        "outcome_id": str(odd.get("outcome_name", "")),
+                        "outcome_name": odd.get("outcome_name", ""),
+                        "odds_value": odd.get("odds_value", 0)
+                    })
                 
-                score_data = {
-                    "fixture_id": temp_fixture_id,
-                    "home_score": home_score,
-                    "away_score": away_score,
-                    "status": "finished"
-                }
-                self.db.insert_score(temp_fixture_id, score_data)
+                if odds_data:
+                    self.db.insert_odds_batch(odds_data)
             
             scores_inserted += 1
         

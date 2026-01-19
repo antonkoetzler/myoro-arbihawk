@@ -170,10 +170,10 @@ class ScoreMatcher:
         # Get fixtures within time window
         try:
             match_dt = datetime.fromisoformat(match_time.replace('Z', '+00:00'))
-        except:
+        except (ValueError, TypeError):
             try:
                 match_dt = datetime.strptime(match_time, '%Y-%m-%d')
-            except:
+            except (ValueError, TypeError):
                 return None
         
         # Calculate time window

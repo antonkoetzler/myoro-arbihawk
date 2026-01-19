@@ -171,7 +171,7 @@ class AutomationScheduler:
             result["betano"] = betano_result
             
             if betano_result.get("success"):
-                self._log("info", f"Betano: {betano_result.get('records', 0)} records ingested")
+                self._log("success", f"✓ Betano completed: {betano_result.get('records', 0)} records ingested")
             else:
                 self._log("error", f"Betano failed: {betano_result.get('error', 'Unknown')}")
                 result["errors"].append(f"Betano: {betano_result.get('error', 'Unknown')}")
@@ -194,7 +194,7 @@ class AutomationScheduler:
             result["flashscore"] = flashscore_result
             
             if flashscore_result.get("success"):
-                self._log("info", f"Flashscore: {flashscore_result.get('records', 0)} records ingested")
+                self._log("success", f"✓ Flashscore completed: {flashscore_result.get('records', 0)} records ingested")
             else:
                 self._log("warning", f"Flashscore failed: {flashscore_result.get('error', 'Unknown')}")
                 result["errors"].append(f"Flashscore: {flashscore_result.get('error', 'Unknown')}")
@@ -218,7 +218,7 @@ class AutomationScheduler:
                 result["livescore"] = livescore_result
                 
                 if livescore_result.get("success"):
-                    self._log("info", f"Livescore: {livescore_result.get('records', 0)} records ingested")
+                    self._log("success", f"✓ Livescore completed: {livescore_result.get('records', 0)} records ingested")
                 else:
                     self._log("error", f"Livescore failed: {livescore_result.get('error', 'Unknown')}")
                     result["errors"].append(f"Livescore: {livescore_result.get('error', 'Unknown')}")
@@ -232,43 +232,42 @@ class AutomationScheduler:
                 result["stopped"] = True
                 return result
             
-            # Match scores to fixtures (for any unmatched scores)
-            self._log("info", "Matching remaining unmatched scores to fixtures...")
+            # Match scores to fixtures
+            self._log("info", "Matching scores to fixtures...")
+            # Matching is done during score ingestion, but run batch matching for any unmatched
             try:
-                # Get all scores with temp fixture IDs (unmatched)
-                scores_df = self.db.get_scores()
-                unmatched_scores = []
+                from data.matchers import ScoreMatcher
+                matcher = ScoreMatcher(self.db)
                 
-                for _, score_row in scores_df.iterrows():
-                    fixture_id = score_row.get('fixture_id', '')
-                    # Check if it's a temp ID (starts with flashscore_ or livescore_)
-                    if fixture_id.startswith('flashscore_') or fixture_id.startswith('livescore_'):
-                        # Parse temp ID: {source}_{home_team}_{away_team}_{match_date}
-                        parts = fixture_id.split('_', 3)  # Split into [source, home_team, away_team, rest]
-                        if len(parts) >= 4:
-                            source_part = parts[0]
-                            # Reconstruct team names (they may contain underscores)
-                            # Last part is date, everything else is teams
-                            date_part = parts[-1]
-                            team_part = '_'.join(parts[1:-1])
-                            # Try to split teams (this is approximate - teams may have underscores)
-                            # For now, we'll skip this complex parsing and rely on ingestion-time matching
-                            # Most scores should be matched during ingestion
-                            pass
+                # Get all unmatched scores (scores with fixture_ids not in fixtures)
+                all_scores = self.db.get_scores()
+                fixtures = self.db.get_fixtures()
+                fixture_ids_set = set(fixtures['fixture_id'].tolist())
+                unmatched = all_scores[~all_scores['fixture_id'].isin(fixture_ids_set)]
                 
-                # Count matched vs unmatched
-                total_scores = len(scores_df)
-                matched_scores = len(scores_df[~scores_df['fixture_id'].str.startswith(('flashscore_', 'livescore_'), na=False)])
-                unmatched_count = total_scores - matched_scores
+                # Clean up old fbref scores that can't be matched (they have no team info)
+                old_unmatched = unmatched[unmatched['fixture_id'].str.startswith('fbref_', na=False)]
+                if len(old_unmatched) > 0:
+                    self._log("info", f"Cleaning up {len(old_unmatched)} old unmatched fbref scores...")
+                    with self.db._get_connection() as conn:
+                        cursor = conn.cursor()
+                        # Use executemany for better performance
+                        temp_ids = [(tid,) for tid in old_unmatched['fixture_id']]
+                        cursor.executemany("DELETE FROM scores WHERE fixture_id = ?", temp_ids)
+                    self._log("info", f"Removed {len(old_unmatched)} old unmatched scores")
+                
+                # Count remaining unmatched
+                remaining_unmatched = len(unmatched) - len(old_unmatched)
+                matched_count = len(all_scores) - len(unmatched)
                 
                 result["matching"] = {
-                    "matched": matched_scores,
-                    "unmatched": unmatched_count,
-                    "match_rate": matched_scores / total_scores if total_scores > 0 else 0
+                    "matched": matched_count,
+                    "unmatched": remaining_unmatched,
+                    "cleaned_old": len(old_unmatched)
                 }
-                self._log("info", f"Score matching: {matched_scores} matched, {unmatched_count} unmatched")
+                self._log("info", f"Score matching: {matched_count} matched, {remaining_unmatched} unmatched")
             except Exception as e:
-                self._log("error", f"Matching check failed: {e}")
+                self._log("error", f"Error during batch matching: {e}")
                 result["matching"] = {"matched": 0, "unmatched": 0, "error": str(e)}
             
             # Settle pending bets
@@ -355,7 +354,7 @@ class AutomationScheduler:
         result = self.ingestion.ingest_from_subprocess(
             cmd_parts, 
             source, 
-            timeout=600,
+            timeout=None,
             log_callback=self._log
         )
         

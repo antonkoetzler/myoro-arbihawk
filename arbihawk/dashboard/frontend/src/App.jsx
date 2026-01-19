@@ -614,27 +614,40 @@ function App() {
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">Model Versions</h3>
             <div className="space-y-4">
-              {models?.versions?.length > 0 ? models.versions.map((model, i) => (
-                <div key={i} className={`p-4 rounded-lg border ${model.is_active ? 'border-sky-500/50 bg-sky-500/10' : 'border-slate-700 bg-slate-700/30'}`}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{model.market}</p>
-                        {model.is_active && <span className="text-xs bg-sky-500 text-white px-2 py-0.5 rounded">Active</span>}
+              {models?.versions?.length > 0 ? models.versions.map((model, i) => {
+                const marketDescriptions = {
+                  '1x2': 'Match Result: Predicts the match outcome - Home Win (1), Draw (X), or Away Win (2)',
+                  'over_under': 'Total Goals: Predicts if the total number of goals scored by both teams will be Over 2.5 or Under 2.5',
+                  'btts': 'Both Teams To Score (BTTS): Predicts whether both teams will score at least one goal each (Yes) or if at least one team fails to score (No)'
+                }
+                const description = marketDescriptions[model.market] || 'Betting market prediction model'
+                
+                return (
+                  <div key={i} className={`p-4 rounded-lg border ${model.is_active ? 'border-sky-500/50 bg-sky-500/10' : 'border-slate-700 bg-slate-700/30'}`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{model.market}</p>
+                          <Tooltip text={description}>
+                            <HelpCircle size={14} className="text-slate-500 cursor-help" />
+                          </Tooltip>
+                          {model.is_active && <span className="text-xs bg-sky-500 text-white px-2 py-0.5 rounded">Active</span>}
+                        </div>
+                        <p className="text-sm text-slate-400">Version {model.version_id}</p>
+                        <p className="text-xs text-slate-500 mt-1">{description}</p>
                       </div>
-                      <p className="text-sm text-slate-400">Version {model.version_id}</p>
+                      <div className="text-right">
+                        <p className="font-mono">{model.cv_score?.toFixed(4) || '-'}</p>
+                        <p className="text-xs text-slate-400">CV Score</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono">{model.cv_score?.toFixed(4) || '-'}</p>
-                      <p className="text-xs text-slate-400">CV Score</p>
+                    <div className="mt-3 flex gap-4 text-sm text-slate-400">
+                      <span>Samples: {model.training_samples}</span>
+                      <span>Trained: {model.trained_at?.split('T')[0]}</span>
                     </div>
                   </div>
-                  <div className="mt-3 flex gap-4 text-sm text-slate-400">
-                    <span>Samples: {model.training_samples}</span>
-                    <span>Trained: {model.trained_at?.split('T')[0]}</span>
-                  </div>
-                </div>
-              )) : (
+                )
+              }) : (
                 <EmptyState 
                   icon={RefreshCw} 
                   title="No Models Yet" 

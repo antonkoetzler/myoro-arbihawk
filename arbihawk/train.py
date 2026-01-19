@@ -92,10 +92,31 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
             print_success(f"Model saved to {model_path}")
             trained_count += 1
             
+            # Get CV score from predictor (defaults to 0.5 if not available)
+            cv_score = getattr(predictor, 'cv_score', 0.5)
+            
+            # Save to versioning system
+            from models.versioning import ModelVersionManager
+            version_manager = ModelVersionManager(db)
+            version_id = version_manager.save_version(
+                market=market,
+                model_path=str(model_path),
+                training_samples=len(X),
+                cv_score=cv_score,
+                performance_metrics={
+                    "features": len(X.columns),
+                    "label_distribution": y.value_counts().to_dict()
+                },
+                activate=True
+            )
+            print_info(f"Model version {version_id} saved and activated")
+            
             metrics["markets"][market] = {
                 "samples": len(X),
                 "features": len(X.columns),
                 "model_path": str(model_path),
+                "version_id": version_id,
+                "cv_score": cv_score,
                 "label_distribution": y.value_counts().to_dict()
             }
             metrics["total_samples"] += len(X)
