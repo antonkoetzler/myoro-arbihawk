@@ -119,27 +119,81 @@ function useWebSocketLogs() {
 }
 
 // Tooltip component - only shows when text is provided
-function Tooltip({ text, children, className = '' }) {
+function Tooltip({ text, children, className = '', position = 'auto' }) {
   const [show, setShow] = useState(false)
+  const [tooltipStyle, setTooltipStyle] = useState({})
+  const tooltipRef = useRef(null)
+  const containerRef = useRef(null)
   
   // Don't add tooltip behavior if there's no text
   if (!text) {
     return <div className={className}>{children}</div>
   }
   
+  const updatePosition = () => {
+    if (!tooltipRef.current || !containerRef.current) return
+    
+    const tooltip = tooltipRef.current
+    const container = containerRef.current
+    const tooltipRect = tooltip.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const margin = 8
+    
+    let style = {}
+    let arrowClass = 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900'
+    let tooltipClass = 'bottom-full left-1/2 -translate-x-1/2 mb-2'
+    
+    // Check if tooltip would overflow top
+    if (tooltipRect.top < margin) {
+      tooltipClass = 'top-full left-1/2 -translate-x-1/2 mt-2'
+      arrowClass = 'absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900'
+    }
+    
+    // Check horizontal overflow
+    const centerX = containerRect.left + containerRect.width / 2
+    const tooltipWidth = tooltipRect.width
+    const leftBound = tooltipWidth / 2
+    const rightBound = viewportWidth - tooltipWidth / 2
+    
+    if (centerX < leftBound) {
+      style.left = '0'
+      style.transform = 'translateX(0)'
+    } else if (centerX > rightBound) {
+      style.right = '0'
+      style.transform = 'translateX(0)'
+    }
+    
+    setTooltipStyle(style)
+  }
+  
+  const handleMouseEnter = () => {
+    setShow(true)
+    // Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      requestAnimationFrame(updatePosition)
+    })
+  }
+  
   return (
-    <div className={`relative inline-flex items-center ${className}`}>
+    <div ref={containerRef} className={`relative inline-flex items-center ${className}`}>
       <div
-        onMouseEnter={() => setShow(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setShow(false)}
         className="cursor-help"
       >
         {children}
       </div>
       {show && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-slate-900 text-slate-200 rounded whitespace-nowrap z-50 border border-slate-700">
+        <div 
+          ref={tooltipRef}
+          style={tooltipStyle}
+          className={`absolute px-2 py-1 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal max-w-xs z-50 border border-slate-700 shadow-lg ${tooltipStyle.transform ? '' : 'left-1/2 -translate-x-1/2'} ${tooltipStyle.transform ? '' : 'bottom-full mb-2'}`}
+        >
           {text}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+          <div className={`absolute ${tooltipStyle.transform ? 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900' : 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900'}`} />
         </div>
       )}
     </div>
@@ -612,7 +666,12 @@ function App() {
       {activeTab === 'models' && (
         <div className="space-y-6">
           <div className="card">
-            <h3 className="text-lg font-semibold mb-4">Model Versions</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="text-lg font-semibold">Model Versions</h3>
+              <Tooltip text="Cross-Validation (CV) Score: Measures model accuracy using k-fold cross-validation. Higher scores (closer to 1.0) indicate better predictive performance. Each model is evaluated on multiple data folds to ensure reliability.">
+                <HelpCircle size={16} className="text-slate-500 cursor-help" />
+              </Tooltip>
+            </div>
             <div className="space-y-4">
               {models?.versions?.length > 0 ? models.versions.map((model, i) => {
                 const marketDescriptions = {
@@ -637,7 +696,12 @@ function App() {
                         <p className="text-xs text-slate-500 mt-1">{description}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-mono">{model.cv_score?.toFixed(4) || '-'}</p>
+                        <div className="flex items-center justify-end gap-1">
+                          <p className="font-mono">{model.cv_score?.toFixed(4) || '-'}</p>
+                          <Tooltip text="Cross-Validation Score: Model accuracy measured using k-fold cross-validation. Values range from 0.0 to 1.0, with higher scores indicating better predictive performance.">
+                            <HelpCircle size={12} className="text-slate-500 cursor-help" />
+                          </Tooltip>
+                        </div>
                         <p className="text-xs text-slate-400">CV Score</p>
                       </div>
                     </div>
