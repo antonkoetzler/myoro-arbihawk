@@ -168,7 +168,7 @@ class VirtualBankroll:
     
     def place_bet(self, fixture_id: str, market_id: str, market_name: str,
                   outcome_id: str, outcome_name: str, odds: float,
-                  confidence: float = 0.5) -> Optional[int]:
+                  confidence: float = 0.5, model_market: Optional[str] = None) -> Optional[int]:
         """
         Place a virtual bet.
         
@@ -180,6 +180,7 @@ class VirtualBankroll:
             outcome_name: Outcome name
             odds: Bet odds
             confidence: Model confidence
+            model_market: Model market type (1x2, over_under, btts) for tracking
             
         Returns:
             Bet ID or None if bet couldn't be placed
@@ -202,7 +203,8 @@ class VirtualBankroll:
             "outcome_id": outcome_id,
             "outcome_name": outcome_name,
             "odds": odds,
-            "stake": stake
+            "stake": stake,
+            "model_market": model_market
         }
         
         bet_id = self.db.insert_bet(bet_data)
@@ -214,17 +216,57 @@ class VirtualBankroll:
     
     def get_stats(self) -> Dict[str, Any]:
         """
-        Get bankroll statistics.
+        Get bankroll statistics with per-model breakdown.
         
         Returns:
-            Dict with performance stats
+            Dict with performance stats including per-model breakdown
         """
         stats = self.db.get_bankroll_stats()
         
         current_balance = self.balance
         profit = current_balance - self.starting_balance
         
+        # Get per-model stats
+        by_model = {}
+        for market in ['1x2', 'over_under', 'btts']:
+            model_stats = self.db.get_bankroll_stats_by_model(market)
+            if model_stats.get("total_bets", 0) > 0:
+                by_model[market] = model_stats
+        
         return {
+            "starting_balance": self.starting_balance,
+            "current_balance": current_balance,
+            "profit": profit,
+            "roi": profit / self.starting_balance if self.starting_balance > 0 else 0,
+            "total_bets": stats.get("total_bets", 0),
+            "settled_bets": stats.get("settled_bets", 0),
+            "pending_bets": stats.get("pending_bets", 0),
+            "wins": stats.get("wins", 0),
+            "losses": stats.get("losses", 0),
+            "win_rate": stats.get("win_rate", 0),
+            "total_stake": stats.get("total_stake", 0),
+            "total_payout": stats.get("total_payout", 0),
+            "strategy": self.strategy,
+            "by_model": by_model
+        }
+    
+    def get_stats_by_model(self, market: str) -> Dict[str, Any]:
+        """
+        Get bankroll statistics for a specific model market.
+        
+        Args:
+            market: Model market type (1x2, over_under, btts)
+            
+        Returns:
+            Dict with performance stats for the model
+        """
+        stats = self.db.get_bankroll_stats_by_model(market)
+        
+        current_balance = self.balance
+        profit = current_balance - self.starting_balance
+        
+        return {
+            "market": market,
             "starting_balance": self.starting_balance,
             "current_balance": current_balance,
             "profit": profit,

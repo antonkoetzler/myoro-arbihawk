@@ -224,6 +224,17 @@ async def get_bankroll_report() -> Dict[str, Any]:
     return get_bankroll().get_performance_report()
 
 
+@app.get("/api/bankroll/by-model")
+async def get_bankroll_by_model(
+    market: str = Query(..., description="Model market: 1x2, over_under, or btts")
+) -> Dict[str, Any]:
+    """Get bankroll statistics for a specific model market."""
+    if market not in ['1x2', 'over_under', 'btts']:
+        raise HTTPException(status_code=400, detail="Invalid market. Must be: 1x2, over_under, or btts")
+    
+    return get_bankroll().get_stats_by_model(market)
+
+
 # =============================================================================
 # BETS ENDPOINTS
 # =============================================================================
@@ -324,18 +335,20 @@ async def get_automation_status() -> Dict[str, Any]:
 
 
 class TriggerRequest(BaseModel):
-    mode: str  # "collect" or "train"
+    mode: str  # "collect", "train", or "betting"
 
 
 @app.post("/api/automation/trigger")
 async def trigger_automation(request: TriggerRequest) -> Dict[str, Any]:
-    """Manually trigger data collection or training."""
+    """Manually trigger data collection, training, or betting."""
     scheduler = get_scheduler()
     
     if request.mode == "collect":
         result = scheduler.trigger_collection()
     elif request.mode == "train":
         result = scheduler.trigger_training()
+    elif request.mode == "betting":
+        result = scheduler.trigger_betting()
     else:
         raise HTTPException(status_code=400, detail="Invalid mode")
     
@@ -364,6 +377,39 @@ async def stop_automation() -> Dict[str, Any]:
     return {
         "success": False,
         "message": "No task or daemon is currently running"
+    }
+
+
+class DaemonStartRequest(BaseModel):
+    interval_seconds: int = 21600  # Default 6 hours
+
+
+@app.post("/api/automation/daemon/start")
+async def start_daemon(request: DaemonStartRequest = DaemonStartRequest()) -> Dict[str, Any]:
+    """Start daemon mode."""
+    scheduler = get_scheduler()
+    status = scheduler.get_status()
+    
+    if status.get("running"):
+        return {
+            "success": False,
+            "error": "Daemon is already running"
+        }
+    
+    # Start daemon in background thread
+    import threading
+    def run_daemon():
+        try:
+            scheduler.start_daemon(interval_seconds=request.interval_seconds)
+        except Exception as e:
+            broadcast_log("error", f"Daemon error: {e}")
+    
+    thread = threading.Thread(target=run_daemon, daemon=True)
+    thread.start()
+    
+    return {
+        "success": True,
+        "message": f"Daemon started with {request.interval_seconds}s interval"
     }
 
 
@@ -481,6 +527,101 @@ async def get_backups() -> Dict[str, Any]:
     return {
         "backups": backups,
         "count": len(backups)
+    }
+
+
+# =============================================================================
+# CONFIG ENDPOINTS
+# =============================================================================
+
+@app.get("/api/config/fake-money")
+async def get_fake_money_config() -> Dict[str, Any]:
+    """Get fake money configuration."""
+    import config
+    return config.FAKE_MONEY_CONFIG
+
+
+class FakeMoneyConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    starting_balance: Optional[float] = None
+    bet_sizing_strategy: Optional[str] = None
+    fixed_stake: Optional[float] = None
+    percentage_stake: Optional[float] = None
+    unit_size_percentage: Optional[float] = None
+    auto_bet_after_training: Optional[bool] = None
+
+
+@app.put("/api/config/fake-money")
+async def update_fake_money_config(config_update: FakeMoneyConfigUpdate) -> Dict[str, Any]:
+    """Update fake money configuration."""
+    import config
+    
+    # Load current config
+    config_path = Path(__file__).parent.parent / "config" / "automation.json"
+    with open(config_path, 'r') as f:
+        automation_config = json.load(f)
+    
+    # Update fake_money section
+    fake_money = automation_config.get("fake_money", {})
+    update_dict = config_update.dict(exclude_unset=True)
+    fake_money.update(update_dict)
+    automation_config["fake_money"] = fake_money
+    
+    # Save config
+    with open(config_path, 'w') as f:
+        json.dump(automation_config, f, indent=2)
+    
+    # Reload config
+    config.reload_config()
+    
+    return {
+        "success": True,
+        "message": "Configuration updated",
+        "config": fake_money
+    }
+
+
+@app.get("/api/config/automation")
+async def get_automation_config() -> Dict[str, Any]:
+    """Get automation configuration."""
+    import config
+    config_path = Path(__file__).parent.parent / "config" / "automation.json"
+    with open(config_path, 'r') as f:
+        return json.load(f)
+
+
+class AutomationConfigUpdate(BaseModel):
+    collection_schedule: Optional[str] = None
+    training_schedule: Optional[str] = None
+    incremental_mode: Optional[bool] = None
+    matching_tolerance_hours: Optional[int] = None
+
+
+@app.put("/api/config/automation")
+async def update_automation_config(config_update: AutomationConfigUpdate) -> Dict[str, Any]:
+    """Update automation configuration."""
+    import config
+    
+    # Load current config
+    config_path = Path(__file__).parent.parent / "config" / "automation.json"
+    with open(config_path, 'r') as f:
+        automation_config = json.load(f)
+    
+    # Update config
+    update_dict = config_update.dict(exclude_unset=True)
+    automation_config.update(update_dict)
+    
+    # Save config
+    with open(config_path, 'w') as f:
+        json.dump(automation_config, f, indent=2)
+    
+    # Reload config
+    config.reload_config()
+    
+    return {
+        "success": True,
+        "message": "Configuration updated",
+        "config": automation_config
     }
 
 

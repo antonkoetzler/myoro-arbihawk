@@ -18,13 +18,25 @@ const api = {
     body: JSON.stringify({ mode })
   }).then(r => r.json()),
   stopAutomation: () => fetch('/api/automation/stop', { method: 'POST' }).then(r => r.json()),
+  startDaemon: (intervalSeconds = 21600) => fetch('/api/automation/daemon/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interval_seconds: intervalSeconds })
+  }).then(r => r.json()),
+  getFakeMoneyConfig: () => fetch('/api/config/fake-money').then(r => r.json()),
+  updateFakeMoneyConfig: (config) => fetch('/api/config/fake-money', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  }).then(r => r.json()),
 }
 
 // Messages that indicate a new task is starting (should clear logs)
 const TASK_START_PATTERNS = [
   'Starting model training',
   'Starting data collection',
-  'Starting full automation cycle'
+  'Starting full automation cycle',
+  'Starting betting cycle'
 ]
 
 // WebSocket hook for real-time logs
@@ -43,7 +55,7 @@ function useWebSocketLogs() {
     // Determine WebSocket URL based on current location
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws/logs`
-    
+
     try {
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
@@ -58,24 +70,24 @@ function useWebSocketLogs() {
           const data = JSON.parse(event.data)
           // Ignore ping messages
           if (data.type === 'ping') return
-          
+
           // Check if this message indicates a new task starting
           const isTaskStart = TASK_START_PATTERNS.some(
             pattern => data.message?.includes(pattern)
           )
-          
+
           setLogs(prev => {
             // If a new task is starting, clear previous logs and start fresh
             if (isTaskStart) {
               return [data]
             }
-            
+
             // Prevent duplicates by checking timestamp + message
             const isDuplicate = prev.some(
               log => log.timestamp === data.timestamp && log.message === data.message
             )
             if (isDuplicate) return prev
-            
+
             // Keep only last 500 logs
             const newLogs = [...prev, data]
             return newLogs.slice(-500)
@@ -104,7 +116,7 @@ function useWebSocketLogs() {
 
   useEffect(() => {
     connect()
-    
+
     return () => {
       if (wsRef.current) {
         wsRef.current.close()
@@ -124,43 +136,43 @@ function Tooltip({ text, children, className = '', position = 'auto' }) {
   const [tooltipStyle, setTooltipStyle] = useState({})
   const tooltipRef = useRef(null)
   const containerRef = useRef(null)
-  
+
   // Don't add tooltip behavior if there's no text
   if (!text) {
     return <div className={className}>{children}</div>
   }
-  
+
   const updatePosition = () => {
     if (!tooltipRef.current || !containerRef.current) return
-    
+
     const tooltip = tooltipRef.current
     const container = containerRef.current
     const tooltipRect = tooltip.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
-    
+
     const viewportWidth = window.innerWidth
     const margin = 8
-    
+
     let style = { placement: 'top', xAlign: 'center' }
-    
+
     // Check if tooltip would overflow top - place below instead
     if (tooltipRect.top < margin) {
       style.placement = 'bottom'
     }
-    
+
     // Check horizontal overflow
     const centerX = containerRect.left + containerRect.width / 2
     const tooltipHalfWidth = tooltipRect.width / 2
-    
+
     if (centerX - tooltipHalfWidth < margin) {
       style.xAlign = 'left'
     } else if (centerX + tooltipHalfWidth > viewportWidth - margin) {
       style.xAlign = 'right'
     }
-    
+
     setTooltipStyle(style)
   }
-  
+
   const handleMouseEnter = () => {
     setShow(true)
     // Use requestAnimationFrame to ensure DOM is updated
@@ -168,7 +180,7 @@ function Tooltip({ text, children, className = '', position = 'auto' }) {
       requestAnimationFrame(updatePosition)
     })
   }
-  
+
   return (
     <div ref={containerRef} className={`relative inline-flex items-center ${className}`}>
       <div
@@ -179,22 +191,19 @@ function Tooltip({ text, children, className = '', position = 'auto' }) {
         {children}
       </div>
       {show && (
-        <div 
+        <div
           ref={tooltipRef}
-          className={`absolute px-3 py-2 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal min-w-[200px] max-w-xs z-50 border border-slate-700 shadow-lg ${
-            tooltipStyle.placement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
-          } ${
-            tooltipStyle.xAlign === 'left' ? 'left-0' : 
-            tooltipStyle.xAlign === 'right' ? 'right-0' : 
-            'left-1/2 -translate-x-1/2'
-          }`}
+          className={`absolute px-3 py-2 text-xs bg-slate-900 text-slate-200 rounded whitespace-normal min-w-[200px] max-w-xs z-50 border border-slate-700 shadow-lg ${tooltipStyle.placement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
+            } ${tooltipStyle.xAlign === 'left' ? 'left-0' :
+              tooltipStyle.xAlign === 'right' ? 'right-0' :
+                'left-1/2 -translate-x-1/2'
+            }`}
         >
           {text}
-          <div className={`absolute ${
-            tooltipStyle.placement === 'bottom' 
-              ? 'bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900' 
+          <div className={`absolute ${tooltipStyle.placement === 'bottom'
+              ? 'bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900'
               : 'top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900'
-          }`} />
+            }`} />
         </div>
       )}
     </div>
@@ -232,7 +241,7 @@ function StatCard({ title, value, subtitle, icon: Icon, trend }) {
     // Neutral state (null or undefined)
     return 'bg-slate-700/50 text-slate-400'
   }
-  
+
   return (
     <div className="stat-card">
       <div className="flex justify-between items-start">
@@ -268,7 +277,8 @@ function getLogLevelColor(level) {
 
 // Define which queries are needed for each tab
 const TAB_QUERIES = {
-  overview: ['health', 'metrics', 'bankroll', 'bets', 'errors', 'dbStats', 'status'],
+  system: ['health', 'errors', 'dbStats', 'status'],
+  bets: ['bankroll', 'bets'],
   betting: ['bets', 'bankroll'],
   automation: ['status'],
   models: ['models'],
@@ -276,7 +286,7 @@ const TAB_QUERIES = {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('system')
   const queryClient = useQueryClient()
   const logsContainerRef = useRef(null)
   const [autoScroll, setAutoScroll] = useState(true)
@@ -288,43 +298,43 @@ function App() {
   const shouldPoll = (queryKey) => TAB_QUERIES[activeTab]?.includes(queryKey)
 
   // Queries with tab-based polling
-  const { data: health } = useQuery({ 
-    queryKey: ['health'], 
+  const { data: health } = useQuery({
+    queryKey: ['health'],
     queryFn: api.getHealth,
     refetchInterval: shouldPoll('health') ? 30000 : false
   })
-  const { data: metrics } = useQuery({ 
-    queryKey: ['metrics'], 
+  const { data: metrics } = useQuery({
+    queryKey: ['metrics'],
     queryFn: api.getMetricsSummary,
     refetchInterval: shouldPoll('metrics') ? 30000 : false
   })
-  const { data: bankroll } = useQuery({ 
-    queryKey: ['bankroll'], 
+  const { data: bankroll } = useQuery({
+    queryKey: ['bankroll'],
     queryFn: api.getBankroll,
     refetchInterval: shouldPoll('bankroll') ? 30000 : false
   })
-  const { data: bets } = useQuery({ 
-    queryKey: ['bets'], 
+  const { data: bets } = useQuery({
+    queryKey: ['bets'],
     queryFn: () => api.getBets(50),
     refetchInterval: shouldPoll('bets') ? 30000 : false
   })
-  const { data: models } = useQuery({ 
-    queryKey: ['models'], 
+  const { data: models } = useQuery({
+    queryKey: ['models'],
     queryFn: api.getModels,
     refetchInterval: shouldPoll('models') ? 30000 : false
   })
-  const { data: status } = useQuery({ 
-    queryKey: ['status'], 
+  const { data: status } = useQuery({
+    queryKey: ['status'],
     queryFn: api.getAutomationStatus,
     refetchInterval: shouldPoll('status') ? 30000 : false
   })
-  const { data: errors } = useQuery({ 
-    queryKey: ['errors'], 
+  const { data: errors } = useQuery({
+    queryKey: ['errors'],
     queryFn: api.getErrors,
     refetchInterval: shouldPoll('errors') ? 30000 : false
   })
-  const { data: dbStats } = useQuery({ 
-    queryKey: ['dbStats'], 
+  const { data: dbStats } = useQuery({
+    queryKey: ['dbStats'],
     queryFn: api.getDbStats,
     refetchInterval: shouldPoll('dbStats') ? 30000 : false
   })
@@ -342,6 +352,26 @@ function App() {
   const stopMutation = useMutation({
     mutationFn: api.stopAutomation,
     onSuccess: () => queryClient.invalidateQueries(['status'])
+  })
+
+  const { data: fakeMoneyConfig } = useQuery({
+    queryKey: ['fakeMoneyConfig'],
+    queryFn: api.getFakeMoneyConfig,
+    refetchInterval: false
+  })
+
+  const updateFakeMoneyMutation = useMutation({
+    mutationFn: api.updateFakeMoneyConfig,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['fakeMoneyConfig'])
+    }
+  })
+
+  const startDaemonMutation = useMutation({
+    mutationFn: () => api.startDaemon(21600),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['status'])
+    }
   })
 
   // Auto-scroll logs to bottom when new logs arrive
@@ -373,7 +403,7 @@ function App() {
     const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50
     setAutoScroll(isAtBottom)
   }
-  
+
   // Determine if buttons should be disabled and get tooltip text
   const isTaskRunning = !!status?.current_task
   const taskButtonTooltip = isTaskRunning ? 'You can only run one task at a time' : ''
@@ -381,7 +411,7 @@ function App() {
 
   const formatPercent = (val) => val ? `${(val * 100).toFixed(1)}%` : '0%'
   const formatMoney = (val) => val ? `$${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'
-  
+
   // Determine win rate trend - neutral when no wins AND no losses
   const getWinRateTrend = () => {
     const wins = bankroll?.wins || 0
@@ -412,7 +442,7 @@ function App() {
 
       {/* Navigation */}
       <nav className="flex gap-2 mb-6 border-b border-slate-700/50 pb-4">
-        {['overview', 'betting', 'automation', 'models', 'logs'].map(tab => (
+        {['system', 'bets', 'betting', 'automation', 'models', 'logs'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -423,8 +453,84 @@ function App() {
         ))}
       </nav>
 
-      {/* Overview Tab */}
-      {activeTab === 'overview' && (
+      {/* System Tab */}
+      {activeTab === 'system' && (
+        <div className="space-y-6">
+          {/* Errors Card - Always visible */}
+          <div className={`card ${errors?.total_errors > 0 ? 'border-red-500/50 bg-red-500/10' : ''}`}>
+            <div className="flex items-center gap-3 mb-4">
+              <AlertCircle className={errors?.total_errors > 0 ? 'text-red-400' : 'text-slate-500'} />
+              <div>
+                <p className={`font-medium ${errors?.total_errors > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                  {errors?.total_errors > 0 ? 'Errors Detected' : 'No Errors'}
+                </p>
+                <p className="text-sm text-slate-400">
+                  {errors?.total_errors > 0
+                    ? `${errors.total_errors} errors in the last 24 hours`
+                    : 'System is running smoothly'
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Error Details Section */}
+            {errors?.total_errors > 0 && (
+              <div className="space-y-3 mt-4 pt-4 border-t border-slate-700/50">
+                <p className="text-sm font-medium text-slate-300">Error Details</p>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {errors?.log_errors?.map((err, i) => (
+                    <div key={`log-${i}`} className="bg-slate-800/50 rounded p-2 text-sm">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">Log</span>
+                        <span className="text-xs text-slate-500">{err.timestamp}</span>
+                      </div>
+                      <p className="text-red-400 text-xs font-mono break-all">{err.message}</p>
+                    </div>
+                  ))}
+                  {errors?.ingestion_errors?.map((err, i) => (
+                    <div key={`ing-${i}`} className="bg-slate-800/50 rounded p-2 text-sm">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded">Ingestion</span>
+                        <span className="text-xs text-slate-500">{err.source}</span>
+                      </div>
+                      <p className="text-orange-400 text-xs font-mono break-all">{err.errors || 'Validation failed'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Database Stats */}
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-4">Database Stats</h3>
+            {dbStats && Object.keys(dbStats).length > 0 ? (
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(dbStats).map(([key, value]) => (
+                  <div key={key} className="bg-slate-700/30 rounded-lg p-3">
+                    <div className="flex items-center gap-1">
+                      <Tooltip text={dbStatTooltips[key] || `Number of ${key.replace(/_/g, ' ')}`}>
+                        <HelpCircle size={12} className="text-slate-500" />
+                      </Tooltip>
+                      <p className="text-xs text-slate-400 capitalize">{key.replace(/_/g, ' ')}</p>
+                    </div>
+                    <p className="text-lg font-mono">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Database}
+                title="No Data Yet"
+                description="Database statistics will appear here"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bets Tab */}
+      {activeTab === 'bets' && (
         <div className="space-y-6">
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -457,104 +563,55 @@ function App() {
             />
           </div>
 
-          {/* Errors Card - Always visible */}
-          <div className={`card ${errors?.total_errors > 0 ? 'border-red-500/50 bg-red-500/10' : ''}`}>
-            <div className="flex items-center gap-3 mb-4">
-              <AlertCircle className={errors?.total_errors > 0 ? 'text-red-400' : 'text-slate-500'} />
-              <div>
-                <p className={`font-medium ${errors?.total_errors > 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                  {errors?.total_errors > 0 ? 'Errors Detected' : 'No Errors'}
-                </p>
-                <p className="text-sm text-slate-400">
-                  {errors?.total_errors > 0 
-                    ? `${errors.total_errors} errors in the last 24 hours`
-                    : 'System is running smoothly'
-                  }
-                </p>
-              </div>
-            </div>
-            
-            {/* Error Details Section */}
-            {errors?.total_errors > 0 && (
-              <div className="space-y-3 mt-4 pt-4 border-t border-slate-700/50">
-                <p className="text-sm font-medium text-slate-300">Error Details</p>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {errors?.log_errors?.map((err, i) => (
-                    <div key={`log-${i}`} className="bg-slate-800/50 rounded p-2 text-sm">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">Log</span>
-                        <span className="text-xs text-slate-500">{err.timestamp}</span>
-                      </div>
-                      <p className="text-red-400 text-xs font-mono break-all">{err.message}</p>
-                    </div>
-                  ))}
-                  {errors?.ingestion_errors?.map((err, i) => (
-                    <div key={`ing-${i}`} className="bg-slate-800/50 rounded p-2 text-sm">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded">Ingestion</span>
-                        <span className="text-xs text-slate-500">{err.source}</span>
-                      </div>
-                      <p className="text-orange-400 text-xs font-mono break-all">{err.errors || 'Validation failed'}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Recent Activity */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Recent Bets</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {bets?.bets?.length > 0 ? bets.bets.slice(0, 5).map((bet, i) => (
-                  <div key={i} className="flex justify-between items-center py-2 border-b border-slate-700/50 last:border-0">
-                    <div>
-                      <p className="font-medium text-sm">{bet.market_name || 'Unknown'}</p>
-                      <p className="text-xs text-slate-400">{bet.outcome_name}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-sm font-mono ${bet.result === 'win' ? 'text-emerald-400' : bet.result === 'loss' ? 'text-red-400' : 'text-slate-400'}`}>
-                        {bet.result === 'win' ? `+$${bet.payout?.toFixed(2)}` : bet.result === 'loss' ? `-$${bet.stake?.toFixed(2)}` : 'Pending'}
-                      </p>
-                      <p className="text-xs text-slate-500">{bet.odds}x</p>
-                    </div>
+          {/* Recent Bets */}
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-4">Recent Bets</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {bets?.bets?.length > 0 ? bets.bets.slice(0, 10).map((bet, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-slate-700/50 last:border-0">
+                  <div>
+                    <p className="font-medium text-sm">{bet.market_name || 'Unknown'}</p>
+                    <p className="text-xs text-slate-400">{bet.outcome_name}</p>
+                    {bet.model_market && (
+                      <p className="text-xs text-slate-500 mt-1">Model: {bet.model_market}</p>
+                    )}
                   </div>
-                )) : (
-                  <EmptyState 
-                    icon={TrendingUp} 
-                    title="No Bets Yet" 
-                    description="Place bets to see them here"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Database Stats</h3>
-              {dbStats && Object.keys(dbStats).length > 0 ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(dbStats).map(([key, value]) => (
-                    <div key={key} className="bg-slate-700/30 rounded-lg p-3">
-                      <div className="flex items-center gap-1">
-                        <Tooltip text={dbStatTooltips[key] || `Number of ${key.replace(/_/g, ' ')}`}>
-                          <HelpCircle size={12} className="text-slate-500" />
-                        </Tooltip>
-                        <p className="text-xs text-slate-400 capitalize">{key.replace(/_/g, ' ')}</p>
-                      </div>
-                      <p className="text-lg font-mono">{typeof value === 'number' ? value.toLocaleString() : value}</p>
-                    </div>
-                  ))}
+                  <div className="text-right">
+                    <p className={`text-sm font-mono ${bet.result === 'win' ? 'text-emerald-400' : bet.result === 'loss' ? 'text-red-400' : 'text-slate-400'}`}>
+                      {bet.result === 'win' ? `+$${bet.payout?.toFixed(2)}` : bet.result === 'loss' ? `-$${bet.stake?.toFixed(2)}` : 'Pending'}
+                    </p>
+                    <p className="text-xs text-slate-500">{bet.odds}x</p>
+                  </div>
                 </div>
-              ) : (
-                <EmptyState 
-                  icon={Database} 
-                  title="No Data Yet" 
-                  description="Database statistics will appear here"
+              )) : (
+                <EmptyState
+                  icon={TrendingUp}
+                  title="No Bets Yet"
+                  description="Place bets to see them here"
                 />
               )}
             </div>
           </div>
+
+          {/* Per-Model Performance */}
+          {bankroll?.by_model && Object.keys(bankroll.by_model).length > 0 && (
+            <div className="card">
+              <h3 className="text-lg font-semibold mb-4">Performance by Model</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {Object.entries(bankroll.by_model).map(([market, stats]) => (
+                  <div key={market} className="bg-slate-700/30 rounded-lg p-4">
+                    <p className="font-medium mb-2 capitalize">{market}</p>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-slate-400">Bets: <span className="text-slate-300">{stats.total_bets}</span></p>
+                      <p className="text-slate-400">Win Rate: <span className="text-slate-300">{formatPercent(stats.win_rate)}</span></p>
+                      <p className="text-slate-400">ROI: <span className={stats.roi > 0 ? 'text-emerald-400' : stats.roi < 0 ? 'text-red-400' : 'text-slate-300'}>{formatPercent(stats.roi)}</span></p>
+                      <p className="text-slate-400">Profit: <span className={stats.profit > 0 ? 'text-emerald-400' : stats.profit < 0 ? 'text-red-400' : 'text-slate-300'}>{formatMoney(stats.profit)}</span></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -615,22 +672,26 @@ function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-700/30 rounded-lg p-4">
                 <p className="text-sm text-slate-400">Current Task</p>
                 <p className="font-medium">{status?.current_task || 'None'}</p>
               </div>
               <div className="bg-slate-700/30 rounded-lg p-4">
                 <p className="text-sm text-slate-400">Last Collection</p>
-                <p className="font-medium font-mono text-sm">{status?.last_collection || 'Never'}</p>
+                <p className="font-medium font-mono text-sm">{status?.last_collection ? new Date(status.last_collection).toLocaleString() : 'Never'}</p>
               </div>
               <div className="bg-slate-700/30 rounded-lg p-4">
                 <p className="text-sm text-slate-400">Last Training</p>
-                <p className="font-medium font-mono text-sm">{status?.last_training || 'Never'}</p>
+                <p className="font-medium font-mono text-sm">{status?.last_training ? new Date(status.last_training).toLocaleString() : 'Never'}</p>
+              </div>
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <p className="text-sm text-slate-400">Last Betting</p>
+                <p className="font-medium font-mono text-sm">{status?.last_betting ? new Date(status.last_betting).toLocaleString() : 'Never'}</p>
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
               <Tooltip text={taskButtonTooltip}>
                 <button
                   onClick={() => triggerMutation.mutate('collect')}
@@ -649,16 +710,78 @@ function App() {
                   <RefreshCw size={16} /> Run Training
                 </button>
               </Tooltip>
+              <Tooltip text={taskButtonTooltip}>
+                <button
+                  onClick={() => triggerMutation.mutate('betting')}
+                  disabled={triggerMutation.isPending || isTaskRunning}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <TrendingUp size={16} /> Place Bets
+                </button>
+              </Tooltip>
+              <Tooltip text="Start daemon mode to run full cycles continuously">
+                <button
+                  onClick={() => startDaemonMutation.mutate()}
+                  disabled={startDaemonMutation.isPending || status?.running}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Play size={16} /> Run Daemon
+                </button>
+              </Tooltip>
               <Tooltip text={stopButtonTooltip}>
                 <button
                   onClick={() => stopMutation.mutate()}
                   disabled={!isTaskRunning || stopMutation.isPending}
-                  className="btn-danger flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-danger flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
                 >
                   <Square size={16} /> Stop
                 </button>
               </Tooltip>
             </div>
+          </div>
+
+          {/* Configuration Panel */}
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-4">Fake Money Configuration</h3>
+            {fakeMoneyConfig && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-slate-300">Auto-bet after training</label>
+                  <button
+                    onClick={() => updateFakeMoneyMutation.mutate({ auto_bet_after_training: !fakeMoneyConfig.auto_bet_after_training })}
+                    disabled={updateFakeMoneyMutation.isPending}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${fakeMoneyConfig.auto_bet_after_training
+                        ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                        : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                      } disabled:opacity-50`}
+                  >
+                    {fakeMoneyConfig.auto_bet_after_training ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-slate-400 mb-1">Starting Balance</p>
+                    <p className="font-mono">${fakeMoneyConfig.starting_balance?.toLocaleString() || '0'}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-1">Bet Sizing Strategy</p>
+                    <p className="capitalize">{fakeMoneyConfig.bet_sizing_strategy || 'fixed'}</p>
+                  </div>
+                  {fakeMoneyConfig.bet_sizing_strategy === 'fixed' && (
+                    <div>
+                      <p className="text-slate-400 mb-1">Fixed Stake</p>
+                      <p className="font-mono">${fakeMoneyConfig.fixed_stake || '0'}</p>
+                    </div>
+                  )}
+                  {fakeMoneyConfig.bet_sizing_strategy === 'percentage' && (
+                    <div>
+                      <p className="text-slate-400 mb-1">Percentage Stake</p>
+                      <p className="font-mono">{(fakeMoneyConfig.percentage_stake * 100)?.toFixed(1) || '0'}%</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -681,7 +804,7 @@ function App() {
                   'btts': 'Both Teams To Score (BTTS): Predicts whether both teams will score at least one goal each (Yes) or if at least one team fails to score (No)'
                 }
                 const description = marketDescriptions[model.market] || 'Betting market prediction model'
-                
+
                 return (
                   <div key={i} className={`p-4 rounded-lg border ${model.is_active ? 'border-sky-500/50 bg-sky-500/10' : 'border-slate-700 bg-slate-700/30'}`}>
                     <div className="flex justify-between items-start">
@@ -713,9 +836,9 @@ function App() {
                   </div>
                 )
               }) : (
-                <EmptyState 
-                  icon={RefreshCw} 
-                  title="No Models Yet" 
+                <EmptyState
+                  icon={RefreshCw}
+                  title="No Models Yet"
                   description="Train models to see them here"
                 />
               )}
@@ -736,7 +859,7 @@ function App() {
                   {wsConnected ? 'Live' : 'Disconnected'}
                 </div>
                 {!autoScroll && (
-                  <button 
+                  <button
                     onClick={() => setAutoScroll(true)}
                     className="px-2 py-1 rounded text-xs bg-sky-500/20 text-sky-400 hover:bg-sky-500/30"
                   >
@@ -745,7 +868,7 @@ function App() {
                 )}
               </div>
             </div>
-            <div 
+            <div
               ref={logsContainerRef}
               onScroll={handleLogsScroll}
               className="font-mono text-sm space-y-1 max-h-[500px] overflow-y-auto bg-slate-900/50 rounded-lg p-4"
@@ -757,9 +880,9 @@ function App() {
                   {log.message}
                 </div>
               )) : (
-                <EmptyState 
-                  icon={Inbox} 
-                  title="No Logs Yet" 
+                <EmptyState
+                  icon={Inbox}
+                  title="No Logs Yet"
                   description="Logs will appear here when automation runs"
                 />
               )}

@@ -1,5 +1,9 @@
 # Arbihawk Development Rules
 
+## Code Owner
+
+I am the owner of this codebase. I created this entire project and have full knowledge of its architecture, design decisions, and implementation details. When answering questions about this codebase, I should leverage my comprehensive understanding of the system, though I may still need to scan the codebase to verify current state or check specific details.
+
 ## Role
 
 You are a senior neural network developer working on a production betting prediction system.
@@ -14,10 +18,10 @@ You are a senior neural network developer working on a production betting predic
 ## Development Approach
 
 - Take full ownership of the development cycle: iterate, implement, test, and debug independently. Only ask for user input when absolutely necessary (e.g., missing credentials, ambiguous requirements, or decisions requiring domain expertise). Complete the entire workflow yourself whenever technically feasible.
+- NEVER use the integrated Cursor plan mode question flow tool. Ask questions directly in conversation instead.
 - Prefer abstraction and extensibility - design for future scaling
 - Use type hints throughout
 - Follow Python best practices (PEP 8)
-- Only edit anything in the `scrapers` submodule if you absolutely need to. If you have troubles editting the `scrapers` submodule (either do to some Cursor restriction, git restriction, head being detached because it's a submodule, etc) let me know, and we'll work it out.
 
 ## Architecture Principles
 
@@ -25,6 +29,7 @@ You are a senior neural network developer working on a production betting predic
 - Clear separation of concerns
 - Minimal dependencies - only add what's actually used
 - Keep implementations bare until needed
+- Eliminate code duplication - when similar logic appears in multiple places, extract it into shared utilities, base classes, or helper functions rather than copying code
 
 ## Documentation
 

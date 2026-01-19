@@ -18,6 +18,7 @@ from data.matchers import ScoreMatcher
 from data.settlement import BetSettlement
 from data.backup import DatabaseBackup
 from monitoring.metrics import MetricsCollector
+from automation.betting import BettingService
 import config
 
 
@@ -52,6 +53,7 @@ class AutomationScheduler:
         self.settlement = BetSettlement(self.db)
         self.backup = DatabaseBackup()
         self.metrics = MetricsCollector(self.db)
+        self.betting_service = BettingService(self.db)
         
         # Configuration
         self.collection_schedule = config.COLLECTION_SCHEDULE
@@ -66,6 +68,7 @@ class AutomationScheduler:
         self._current_task = None
         self._last_collection = None
         self._last_training = None
+        self._last_betting = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
         
         # Scraper paths (relative to arbihawk root)
@@ -119,6 +122,7 @@ class AutomationScheduler:
             "current_task": self._current_task,
             "last_collection": self._last_collection,
             "last_training": self._last_training,
+            "last_betting": getattr(self, '_last_betting', None),
             "log_count": len(self._logs)
         }
     
@@ -561,3 +565,104 @@ class AutomationScheduler:
         thread.start()
         
         return {"success": True, "message": "Training started in background"}
+    def run_betting(self) -> Dict[str, Any]:
+        """
+        Run betting cycle.
+        
+        Places bets using active models if fake money is enabled
+        and auto_bet_after_training is enabled.
+        
+        Returns:
+            Result dict with betting stats
+        """
+        self._current_task = "betting"
+        self._stop_task_event.clear()
+        start_time = time.time()
+        
+        result = {
+            "success": False,
+            "bets_placed": 0,
+            "total_stake": 0.0,
+            "by_model": {},
+            "errors": []
+        }
+        
+        try:
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Betting stopped by user")
+                result["stopped"] = True
+                return result
+            
+            # Check if fake money is enabled
+            if not config.FAKE_MONEY_CONFIG.get("enabled", False):
+                self._log("info", "Fake money is disabled, skipping betting")
+                result["success"] = True
+                result["skipped"] = True
+                result["reason"] = "Fake money disabled"
+                return result
+            
+            # Check if auto-betting is enabled
+            if not config.AUTO_BET_AFTER_TRAINING:
+                self._log("info", "Auto-betting after training is disabled, skipping betting")
+                result["success"] = True
+                result["skipped"] = True
+                result["reason"] = "Auto-betting disabled"
+                return result
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "Betting stopped by user")
+                result["stopped"] = True
+                return result
+            
+            # Run betting
+            self._log("info", "Starting betting cycle...")
+            betting_result = self.betting_service.place_bets_for_all_models(limit_per_model=10)
+            
+            result["success"] = betting_result.get("success", False)
+            result["bets_placed"] = betting_result.get("total_bets_placed", 0)
+            result["total_stake"] = betting_result.get("total_stake", 0.0)
+            result["by_model"] = betting_result.get("by_model", {})
+            result["errors"] = betting_result.get("errors", [])
+            
+            if result["success"]:
+                if result["bets_placed"] > 0:
+                    self._log("success", f"✓ Betting completed: {result['bets_placed']} bets placed, ${result['total_stake']:.2f} total stake")
+                else:
+                    self._log("info", "Betting completed: No value bets found")
+            else:
+                error_msg = "; ".join(result["errors"]) if result["errors"] else "Unknown error"
+                self._log("error", f"Betting failed: {error_msg}")
+            
+            self._last_betting = datetime.now().isoformat()
+            
+            duration_ms = (time.time() - start_time) * 1000
+            self._log("info", f"Betting cycle completed in {duration_ms/1000:.1f}s")
+            
+        except Exception as e:
+            result["success"] = False
+            result["errors"].append(str(e))
+            self._log("error", f"Betting failed: {e}")
+        
+        finally:
+            self._current_task = None
+        
+        return result
+    
+    def trigger_betting(self) -> Dict[str, Any]:
+        """Manually trigger betting (for dashboard). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                self.run_betting()
+            except Exception as e:
+                self._log("error", f"Background betting failed: {e}")
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Betting started in background"}
+

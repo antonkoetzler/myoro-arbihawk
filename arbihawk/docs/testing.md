@@ -6,7 +6,7 @@ The fake money system allows testing bot performance without risking real money.
 
 ## Configuration
 
-Edit `config/automation.json`:
+Edit `config/automation.json` or use the dashboard configuration panel:
 
 ```json
 {
@@ -16,10 +16,21 @@ Edit `config/automation.json`:
     "bet_sizing_strategy": "fixed",
     "fixed_stake": 100,
     "percentage_stake": 0.02,
-    "unit_size_percentage": 0.01
+    "unit_size_percentage": 0.01,
+    "auto_bet_after_training": false
   }
 }
 ```
+
+### Configuration Options
+
+- **enabled**: Enable/disable fake money system
+- **starting_balance**: Initial balance (default: 10000)
+- **bet_sizing_strategy**: Strategy for calculating stake (fixed, percentage, kelly, unit)
+- **fixed_stake**: Fixed amount to bet (for fixed strategy)
+- **percentage_stake**: Percentage of bankroll to bet (for percentage strategy)
+- **unit_size_percentage**: Size of one unit as percentage (for unit strategy)
+- **auto_bet_after_training**: Automatically place bets after training completes (default: false)
 
 ## Bet Sizing Strategies
 
@@ -101,10 +112,41 @@ The system tracks:
 - Win/loss count
 - ROI (Return on Investment)
 - Win rate
+- **Per-model performance**: Track performance separately for each model (1x2, over_under, btts)
+
+### Per-Model Tracking
+
+Each bet is tagged with the model market that generated it (`model_market` field). This allows you to:
+
+- View performance breakdown by model in the dashboard
+- Identify which models are most profitable
+- Compare model performance over time
+- Filter bet history by model
+
+## Automated Betting
+
+The system can automatically place bets after training:
+
+1. Enable `auto_bet_after_training` in configuration (via dashboard or config file)
+2. When training completes, the system will:
+   - Load all active models (1x2, over_under, btts)
+   - Find value bets for each model
+   - Place bets via VirtualBankroll
+   - Track which model generated each bet
+
+### Manual Betting
+
+You can also place bets manually:
+
+- **Dashboard**: Click "Place Bets" button in Automation tab
+- **API**: `POST /api/automation/trigger` with `{"mode": "betting"}`
+- **Python**: Use `BettingService.place_bets_for_all_models()`
 
 ## Dashboard
 
-View performance in the dashboard at http://localhost:8000
+View performance in the dashboard at <http://localhost:8000>
 
-- **Overview**: Balance, ROI, win rate
-- **Betting**: Full bet history with export
+- **System**: Errors and database statistics
+- **Bets**: Bankroll stats, recent bets, per-model performance
+- **Betting**: Full bet history table with export
+- **Automation**: Control collection, training, betting, and daemon mode

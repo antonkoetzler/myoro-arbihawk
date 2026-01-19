@@ -15,7 +15,7 @@ import config
 class Database:
     """SQLite database manager for betting data."""
     
-    SCHEMA_VERSION = 2  # Increment when schema changes
+    SCHEMA_VERSION = 3  # Increment when schema changes
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or config.DB_PATH
@@ -186,6 +186,30 @@ class Database:
             cursor.execute("""
                 INSERT OR IGNORE INTO schema_version (version) VALUES (?)
             """, (self.SCHEMA_VERSION,))
+            
+            # Run migrations
+            self._run_migrations(cursor)
+    
+    def _run_migrations(self, cursor):
+        """Run database migrations based on schema version."""
+        # Get current schema version
+        cursor.execute("SELECT MAX(version) FROM schema_version")
+        result = cursor.fetchone()
+        current_version = result[0] if result[0] is not None else 0
+        
+        # Migration 3: Add model_market column to bet_history
+        if current_version < 3:
+            try:
+                # Check if column already exists
+                cursor.execute("PRAGMA table_info(bet_history)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if 'model_market' not in columns:
+                    cursor.execute("ALTER TABLE bet_history ADD COLUMN model_market TEXT")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_model_market ON bet_history(model_market)")
+            except sqlite3.OperationalError as e:
+                # Column might already exist, ignore
+                if "duplicate column name" not in str(e).lower():
+                    raise
     
     # =========================================================================
     # FIXTURE OPERATIONS
@@ -458,8 +482,8 @@ class Database:
             cursor.execute("""
                 INSERT INTO bet_history 
                 (fixture_id, market_id, market_name, outcome_id, outcome_name,
-                 odds, stake, result)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+                 odds, stake, result, model_market)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             """, (
                 bet_data['fixture_id'],
                 bet_data.get('market_id'),
@@ -467,7 +491,8 @@ class Database:
                 bet_data.get('outcome_id'),
                 bet_data.get('outcome_name'),
                 bet_data['odds'],
-                bet_data['stake']
+                bet_data['stake'],
+                bet_data.get('model_market')
             ))
             return cursor.lastrowid
     
@@ -482,8 +507,9 @@ class Database:
             """, (result, payout, bet_id))
     
     def get_bet_history(self, result: Optional[str] = None,
+                        model_market: Optional[str] = None,
                         limit: int = 100) -> pd.DataFrame:
-        """Get bet history."""
+        """Get bet history with optional filtering."""
         with self._get_connection() as conn:
             query = "SELECT * FROM bet_history WHERE 1=1"
             params = []
@@ -491,6 +517,10 @@ class Database:
             if result:
                 query += " AND result = ?"
                 params.append(result)
+            
+            if model_market:
+                query += " AND model_market = ?"
+                params.append(model_market)
             
             query += " ORDER BY placed_at DESC LIMIT ?"
             params.append(limit)
@@ -501,29 +531,38 @@ class Database:
         """Get all pending bets."""
         return self.get_bet_history(result='pending', limit=10000)
     
-    def get_bankroll_stats(self) -> Dict[str, Any]:
-        """Get bankroll statistics."""
+    def get_bankroll_stats(self, model_market: Optional[str] = None) -> Dict[str, Any]:
+        """Get bankroll statistics, optionally filtered by model market."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
+            # Build WHERE clause
+            where_clause = ""
+            params = []
+            if model_market:
+                where_clause = " WHERE model_market = ?"
+                params = [model_market]
+            
             # Total bets
-            cursor.execute("SELECT COUNT(*) FROM bet_history")
+            cursor.execute(f"SELECT COUNT(*) FROM bet_history{where_clause}", params)
             total_bets = cursor.fetchone()[0]
             
             # Settled bets
-            cursor.execute("SELECT COUNT(*) FROM bet_history WHERE result != 'pending'")
+            settled_where = where_clause + (" AND" if where_clause else " WHERE") + " result != 'pending'"
+            cursor.execute(f"SELECT COUNT(*) FROM bet_history{settled_where}", params)
             settled_bets = cursor.fetchone()[0]
             
             # Wins
-            cursor.execute("SELECT COUNT(*) FROM bet_history WHERE result = 'win'")
+            wins_where = where_clause + (" AND" if where_clause else " WHERE") + " result = 'win'"
+            cursor.execute(f"SELECT COUNT(*) FROM bet_history{wins_where}", params)
             wins = cursor.fetchone()[0]
             
             # Total stake
-            cursor.execute("SELECT COALESCE(SUM(stake), 0) FROM bet_history")
+            cursor.execute(f"SELECT COALESCE(SUM(stake), 0) FROM bet_history{where_clause}", params)
             total_stake = cursor.fetchone()[0]
             
             # Total payout
-            cursor.execute("SELECT COALESCE(SUM(payout), 0) FROM bet_history WHERE result != 'pending'")
+            cursor.execute(f"SELECT COALESCE(SUM(payout), 0) FROM bet_history{settled_where}", params)
             total_payout = cursor.fetchone()[0]
             
             return {
@@ -538,6 +577,10 @@ class Database:
                 "profit": total_payout - total_stake,
                 "roi": (total_payout - total_stake) / total_stake if total_stake > 0 else 0
             }
+    
+    def get_bankroll_stats_by_model(self, market: str) -> Dict[str, Any]:
+        """Get bankroll statistics for a specific model market."""
+        return self.get_bankroll_stats(model_market=market)
     
     # =========================================================================
     # MODEL VERSION OPERATIONS

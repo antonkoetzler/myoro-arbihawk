@@ -54,8 +54,12 @@ FAKE_MONEY_CONFIG = _automation_config.get("fake_money", {
     "bet_sizing_strategy": "fixed",
     "fixed_stake": 100,
     "percentage_stake": 0.02,
-    "unit_size_percentage": 0.01
+    "unit_size_percentage": 0.01,
+    "auto_bet_after_training": False
 })
+
+# Auto-betting configuration
+AUTO_BET_AFTER_TRAINING = FAKE_MONEY_CONFIG.get("auto_bet_after_training", False)
 
 # Model versioning configuration
 MODEL_VERSIONING_CONFIG = _automation_config.get("model_versioning", {
@@ -83,6 +87,7 @@ def reload_config():
     global DB_PATH, EV_THRESHOLD, COLLECTION_SCHEDULE, TRAINING_SCHEDULE
     global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, SCRAPER_ARGS
     global FAKE_MONEY_CONFIG, MODEL_VERSIONING_CONFIG, METRICS_CONFIG, BACKUP_CONFIG
+    global AUTO_BET_AFTER_TRAINING
     
     _config = _get_config()
     _automation_config = _get_automation_config()
@@ -94,7 +99,16 @@ def reload_config():
     INCREMENTAL_MODE = _automation_config.get("incremental_mode", True)
     MATCHING_TOLERANCE_HOURS = _automation_config.get("matching_tolerance_hours", 2)
     SCRAPER_ARGS = _automation_config.get("scraper_args", {})
-    FAKE_MONEY_CONFIG = _automation_config.get("fake_money", {})
+    FAKE_MONEY_CONFIG = _automation_config.get("fake_money", {
+        "enabled": True,
+        "starting_balance": 10000,
+        "bet_sizing_strategy": "fixed",
+        "fixed_stake": 100,
+        "percentage_stake": 0.02,
+        "unit_size_percentage": 0.01,
+        "auto_bet_after_training": False
+    })
+    AUTO_BET_AFTER_TRAINING = FAKE_MONEY_CONFIG.get("auto_bet_after_training", False)
     MODEL_VERSIONING_CONFIG = _automation_config.get("model_versioning", {})
     METRICS_CONFIG = _automation_config.get("metrics", {})
     BACKUP_CONFIG = _automation_config.get("backup", {})

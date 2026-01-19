@@ -10,7 +10,8 @@ The automation system runs in several modes:
 
 - **Collection Mode**: Executes scrapers and ingests data only
 - **Training Mode**: Trains models on collected data only
-- **Full Cycle**: Runs both collection and training sequentially
+- **Betting Mode**: Places bets using active models (if enabled)
+- **Full Cycle**: Runs collection → training → betting sequentially
 - **Daemon Mode**: Continuously runs full cycles at configured intervals
 - **Once Mode**: Runs a single full cycle and exits (useful for cron jobs)
 
@@ -36,6 +37,21 @@ When running training, the system:
 4. Saves models to disk with versioning
 5. Records training metrics
 6. Checks for rollback conditions (if auto-rollback enabled)
+
+## Betting Cycle
+
+When running betting (automatically after training if enabled, or manually):
+
+1. Checks if fake money is enabled
+2. Checks if auto-betting is enabled (for automatic execution)
+3. Loads all active models (1x2, over_under, btts)
+4. For each model:
+   - Finds value bets using ValueBetEngine
+   - Places bets via VirtualBankroll
+   - Tags each bet with the model market for tracking
+5. Returns summary of bets placed per model
+
+**Note**: Betting only executes if `fake_money.enabled` is true. For automatic betting after training, `auto_bet_after_training` must also be true.
 
 ## Configuration
 
@@ -69,11 +85,24 @@ The dashboard provides a web interface to:
 
 - Trigger collection manually
 - Trigger training manually
+- Trigger betting manually
+- Start/stop daemon mode
+- Configure fake money settings (including auto-betting)
 - Stop running automation tasks
 - View real-time logs
 - Monitor automation status
 
 Access these controls at the Automation page in the dashboard.
+
+### Configuration via Dashboard
+
+All fake money settings can be changed via the dashboard:
+
+- Toggle auto-betting after training
+- View current settings (starting balance, bet sizing strategy, etc.)
+- No manual config file editing required
+
+Settings are persisted to `config/automation.json` and reloaded automatically.
 
 ## Running Automation
 
@@ -98,7 +127,7 @@ python -m automation.runner --mode=collect
 # Run training only
 python -m automation.runner --mode=train
 
-# Run full cycle (collection + training)
+# Run full cycle (collection + training + betting)
 python -m automation.runner --mode=full
 
 # Run as continuous daemon
