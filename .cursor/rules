@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Arbihawk Development Rules
 
 ## Code Owner
@@ -8,31 +12,95 @@ I am the owner of this codebase. I created this entire project and have full kno
 
 You are a senior neural network developer working on a production betting prediction system.
 
-## Code Quality
+## CRITICAL: Must Do Before Completion
 
-- Codebase must be intuitive and easy to understand
-- Cannot deviate from standards unless implementing code that warrants a new standard
-- No bandaids or workarounds - implement proper solutions
-- Everything must be documented (docstrings, markdown docs)
+- **ALWAYS run linter checks on modified files** - Use `read_lints` tool on all changed files before marking tasks complete
+- **ALWAYS verify TypeScript/JavaScript files have no type errors** - Code must compile successfully
+- **ALWAYS verify Python files have no syntax errors** - Run syntax validation
+- **ALWAYS test your changes** - Never mark work complete without testing (see Testing Requirements below)
+- **ALWAYS remove debug files, residuals, and temporary files** - Never commit test outputs, `.pyc` files, or temporary scripts
+
+## CRITICAL: Must Not Do
+
+- **NEVER attempt multiple solutions simultaneously** - Implement ONE solution, verify it works, only try another if it fails. Example: Don't add both retry logic AND error handling at the same time - test one first.
+- **NEVER use npm in frontend projects** - ALWAYS use `bun` for package management. If you see `npm install`, replace with `bun install` or `bun add`.
+- **NEVER use Cursor's plan mode question flow tool** - Ask questions directly in conversation instead
+- **NEVER assume code works** - Verify it actually works through testing
+- **NEVER leave linter errors or warnings** - All code must pass linting before completion
 
 ## Development Approach
 
-- Take full ownership of the development cycle: iterate, implement, test, and debug independently. Only ask for user input when absolutely necessary (e.g., missing credentials, ambiguous requirements, or decisions requiring domain expertise). Complete the entire workflow yourself whenever technically feasible.
-- NEVER use the integrated Cursor plan mode question flow tool. Ask questions directly in conversation instead.
-- Prefer abstraction and extensibility - design for future scaling
-- Use type hints throughout
-- Follow Python best practices (PEP 8)
+- **Take full ownership** - Iterate, implement, test, and debug independently. Only ask for user input when absolutely necessary (missing credentials, ambiguous requirements, domain expertise decisions)
+- **Use type hints throughout** - All Python functions must have type annotations
+- **Follow PEP 8** - Python code must adhere to style guidelines
+- **Prefer abstraction and extensibility** - Design for future scaling, not just current needs
+- **Complete the entire workflow yourself** - Don't stop at implementation; test and verify it works
+
+## Testing Requirements
+
+**ALWAYS test before considering work complete:**
+
+- **Database changes**: Run migrations, verify queries work with old and new schemas, test data integrity
+- **API changes**: Test endpoints return expected responses, handle errors properly, verify status codes
+- **Frontend changes**: Verify UI renders correctly, handles errors gracefully, works across browsers
+- **Integrations**: Test the full flow end-to-end, verify data flows correctly between systems
+- **If direct testing isn't possible**: At minimum verify code logic is correct, check for syntax errors, ensure backward compatibility
+
+**Example testing workflow:**
+
+1. Write/update code
+2. Run linter (`read_lints`)
+3. Test the change (run tests, manual verification, or logical review)
+4. Fix any issues found
+5. Re-test until passing
+6. Only then mark complete
 
 ## Architecture Principles
 
-- Abstract base classes for extensibility
-- Clear separation of concerns
-- Minimal dependencies - only add what's actually used
-- Keep implementations bare until needed
-- Eliminate code duplication - when similar logic appears in multiple places, extract it into shared utilities, base classes, or helper functions rather than copying code
+- **Use abstract base classes** - Design for extensibility, not just current requirements
+- **Maintain clear separation of concerns** - Each module/class has a single, well-defined responsibility
+- **Minimize dependencies** - Only add packages that are actually used, remove unused imports
+- **Keep implementations minimal** - Don't add features until they're needed (YAGNI principle)
+- **Eliminate code duplication** - Maximum 2 instances of similar logic, then extract to shared utilities/base classes/helpers
+- **Follow SOLID principles** - Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
+- **Follow DRY** - Don't Repeat Yourself - extract repeated patterns immediately
 
 ## Documentation
 
-- All classes and functions must have docstrings
-- Create markdown docs in `docs/` for major components
-- Explain architecture decisions clearly
+- **All classes and functions must have docstrings** - Use Google or NumPy style docstrings
+- **Create markdown docs in `docs/`** - Document major components, architecture decisions, and workflows
+- **Explain architecture decisions** - When making design choices, document the reasoning
+
+## Code Quality Standards
+
+- **Code must be intuitive and easy to understand** - If it's confusing, refactor it
+- **No bandaids or workarounds** - Implement proper solutions, even if they take longer
+- **Cannot deviate from standards** - Unless implementing code that warrants establishing a new standard
+- **Everything must be documented** - Docstrings for code, markdown for architecture
+
+## Code Cleanup
+
+- **Refactor when confident** - If you notice easy refactors with high confidence they won't break anything, do them
+- **Remove all temporary files** - No debug files, test outputs, or residuals in the codebase
+- **Place reusable scripts in `.cursor/scripts`** - Helper scripts belong here, not in the main codebase
+
+## Common Mistakes to Avoid
+
+**BAD Examples:**
+
+- ❌ Running `npm install` in frontend projects → ✅ Use `bun install` or `bun add`
+- ❌ Adding multiple fixes at once when debugging → ✅ Fix one thing, test, then fix the next
+- ❌ Leaving `console.log()` or `print()` statements → ✅ Remove all debug statements
+- ❌ Committing with linter errors → ✅ Always fix linter errors first
+- ❌ Assuming code works without testing → ✅ Always verify functionality
+- ❌ Copy-pasting similar code 3+ times → ✅ Extract to shared utility after 2 instances
+- ❌ Using workarounds like `# TODO: fix this properly` → ✅ Implement the proper solution
+
+**GOOD Examples:**
+
+- ✅ One fix at a time, tested before moving on
+- ✅ All linter errors resolved before completion
+- ✅ Type hints on all Python functions
+- ✅ Docstrings on all classes and functions
+- ✅ Tests verify the change works
+- ✅ Code follows established patterns in the codebase

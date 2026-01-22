@@ -97,10 +97,14 @@ class BettingPredictor(BasePredictor):
             cv_std = scores.std()
             print(f"Cross-validation accuracy ({cv_folds}-fold): {cv_mean:.3f} (+/- {cv_std * 2:.3f})")
             self.cv_score = cv_mean
+            self.cv_std = cv_std
+            self.cv_folds = cv_folds
         else:
             print(f"Warning: Too few samples ({n_samples}) for cross-validation. Model trained on all data.")
             # Default score when CV not possible (50% accuracy baseline)
             self.cv_score = 0.5
+            self.cv_std = 0.0
+            self.cv_folds = 0
         
         self.is_trained = True
     

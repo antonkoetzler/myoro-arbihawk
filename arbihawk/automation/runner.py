@@ -98,6 +98,12 @@ def run_status(scheduler: AutomationScheduler) -> int:
     return 0
 
 
+def run_backtest() -> int:
+    """Run backtesting."""
+    from backtesting.runner import main as backtest_main
+    return backtest_main()
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -108,14 +114,15 @@ Examples:
   python -m automation.runner --mode=collect    # Run data collection only
   python -m automation.runner --mode=train      # Run training only
   python -m automation.runner --mode=full       # Run full cycle
+  python -m automation.runner --mode=backtest   # Run backtesting
   python -m automation.runner --daemon          # Run as continuous daemon
   python -m automation.runner --once            # Run once and exit (for cron)
   python -m automation.runner --status          # Show scheduler status
 """
     )
     
-    parser.add_argument('--mode', choices=['collect', 'train', 'full'],
-                        help='Run mode: collect, train, or full')
+    parser.add_argument('--mode', choices=['collect', 'train', 'full', 'backtest'],
+                        help='Run mode: collect, train, full, or backtest')
     parser.add_argument('--daemon', action='store_true',
                         help='Run as continuous daemon')
     parser.add_argument('--once', action='store_true',
@@ -156,6 +163,9 @@ Examples:
     
     if args.mode == 'full':
         return run_full(scheduler)
+    
+    if args.mode == 'backtest':
+        return run_backtest()
     
     return 0
 

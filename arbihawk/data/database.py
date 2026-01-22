@@ -15,7 +15,7 @@ import config
 class Database:
     """SQLite database manager for betting data."""
     
-    SCHEMA_VERSION = 3  # Increment when schema changes
+    SCHEMA_VERSION = 4  # Increment when schema changes
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or config.DB_PATH
@@ -48,6 +48,9 @@ class Database:
                     applied_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Ensure migrations run before any other operations
+            self._run_migrations(cursor)
             
             # Fixtures table
             cursor.execute("""
@@ -105,7 +108,18 @@ class Database:
                     records_count INTEGER DEFAULT 0,
                     checksum TEXT,
                     validation_status TEXT,
-                    errors TEXT
+                    errors TEXT,
+                    dismissed INTEGER DEFAULT 0
+                )
+            """)
+            
+            # Dismissed errors table (for tracking dismissed log errors)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dismissed_errors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    error_key TEXT NOT NULL UNIQUE,
+                    error_type TEXT NOT NULL,
+                    dismissed_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
@@ -210,6 +224,26 @@ class Database:
                 # Column might already exist, ignore
                 if "duplicate column name" not in str(e).lower():
                     raise
+        
+        # Migration 4: Add dismissed column to ingestion_metadata
+        # Always check if column exists, regardless of schema version (handles cases where version was set but migration didn't run)
+        try:
+            cursor.execute("PRAGMA table_info(ingestion_metadata)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if 'dismissed' not in columns:
+                cursor.execute("ALTER TABLE ingestion_metadata ADD COLUMN dismissed INTEGER DEFAULT 0")
+                # Only update version if we actually added the column
+                if current_version < 4:
+                    cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (4,))
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
+        
+        # Update schema version after migrations (if not already at target version)
+        if current_version < self.SCHEMA_VERSION:
+            cursor.execute("SELECT COUNT(*) FROM schema_version WHERE version = ?", (self.SCHEMA_VERSION,))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (self.SCHEMA_VERSION,))
     
     # =========================================================================
     # FIXTURE OPERATIONS
@@ -364,8 +398,17 @@ class Database:
     
     def get_odds(self, fixture_id: Optional[str] = None,
                  bookmaker_id: Optional[str] = None,
-                 market_id: Optional[str] = None) -> pd.DataFrame:
-        """Get odds matching criteria."""
+                 market_id: Optional[str] = None,
+                 before_date: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get odds matching criteria.
+        
+        Args:
+            fixture_id: Filter by fixture ID
+            bookmaker_id: Filter by bookmaker ID
+            market_id: Filter by market ID
+            before_date: Only return odds created before this date (ISO format)
+        """
         with self._get_connection() as conn:
             query = "SELECT * FROM odds WHERE 1=1"
             params = []
@@ -381,6 +424,12 @@ class Database:
             if market_id:
                 query += " AND market_id = ?"
                 params.append(market_id)
+            
+            if before_date:
+                query += " AND created_at <= ?"
+                params.append(before_date)
+            
+            query += " ORDER BY created_at DESC"
             
             return pd.read_sql_query(query, conn, params=params)
     
@@ -459,7 +508,18 @@ class Database:
                                 limit: int = 100) -> pd.DataFrame:
         """Get ingestion metadata records."""
         with self._get_connection() as conn:
-            query = "SELECT * FROM ingestion_metadata WHERE 1=1"
+            # Check if dismissed column exists
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(ingestion_metadata)")
+            columns = [row[1] for row in cursor.fetchall()]
+            has_dismissed = 'dismissed' in columns
+            
+            # Build query based on whether dismissed column exists
+            if has_dismissed:
+                query = "SELECT * FROM ingestion_metadata WHERE (dismissed IS NULL OR dismissed = 0)"
+            else:
+                query = "SELECT * FROM ingestion_metadata WHERE 1=1"
+            
             params = []
             
             if source:
@@ -470,6 +530,36 @@ class Database:
             params.append(limit)
             
             return pd.read_sql_query(query, conn, params=params)
+    
+    def dismiss_ingestion_error(self, error_id: int) -> None:
+        """Mark an ingestion error as dismissed."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Check if dismissed column exists
+            cursor.execute("PRAGMA table_info(ingestion_metadata)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if 'dismissed' in columns:
+                cursor.execute("""
+                    UPDATE ingestion_metadata 
+                    SET dismissed = 1 
+                    WHERE id = ?
+                """, (error_id,))
+    
+    def dismiss_log_error(self, error_key: str) -> None:
+        """Record a dismissed log error."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO dismissed_errors (error_key, error_type)
+                VALUES (?, 'log')
+            """, (error_key,))
+    
+    def get_dismissed_log_errors(self) -> Set[str]:
+        """Get set of dismissed log error keys."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT error_key FROM dismissed_errors WHERE error_type = 'log'")
+            return {row[0] for row in cursor.fetchall()}
     
     # =========================================================================
     # BET HISTORY OPERATIONS (FAKE MONEY)
@@ -508,24 +598,107 @@ class Database:
     
     def get_bet_history(self, result: Optional[str] = None,
                         model_market: Optional[str] = None,
-                        limit: int = 100) -> pd.DataFrame:
-        """Get bet history with optional filtering."""
+                        market_name: Optional[str] = None,
+                        outcome_name: Optional[str] = None,
+                        tournament_name: Optional[str] = None,
+                        date_from: Optional[str] = None,
+                        date_to: Optional[str] = None,
+                        limit: int = 100,
+                        offset: int = 0) -> pd.DataFrame:
+        """Get bet history with optional filtering and pagination."""
         with self._get_connection() as conn:
-            query = "SELECT * FROM bet_history WHERE 1=1"
+            query = """
+                SELECT 
+                    bh.*,
+                    f.tournament_name
+                FROM bet_history bh
+                LEFT JOIN fixtures f ON bh.fixture_id = f.fixture_id
+                WHERE 1=1
+            """
             params = []
             
             if result:
-                query += " AND result = ?"
+                query += " AND bh.result = ?"
                 params.append(result)
             
             if model_market:
-                query += " AND model_market = ?"
+                query += " AND bh.model_market = ?"
                 params.append(model_market)
             
-            query += " ORDER BY placed_at DESC LIMIT ?"
-            params.append(limit)
+            if market_name:
+                query += " AND bh.market_name LIKE ?"
+                params.append(f"%{market_name}%")
+            
+            if outcome_name:
+                query += " AND bh.outcome_name LIKE ?"
+                params.append(f"%{outcome_name}%")
+            
+            if tournament_name:
+                query += " AND f.tournament_name LIKE ?"
+                params.append(f"%{tournament_name}%")
+            
+            if date_from:
+                query += " AND DATE(bh.placed_at) >= ?"
+                params.append(date_from)
+            
+            if date_to:
+                query += " AND DATE(bh.placed_at) <= ?"
+                params.append(date_to)
+            
+            query += " ORDER BY bh.placed_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
             
             return pd.read_sql_query(query, conn, params=params)
+    
+    def get_bet_history_count(self, result: Optional[str] = None,
+                              model_market: Optional[str] = None,
+                              market_name: Optional[str] = None,
+                              outcome_name: Optional[str] = None,
+                              tournament_name: Optional[str] = None,
+                              date_from: Optional[str] = None,
+                              date_to: Optional[str] = None) -> int:
+        """Get total count of bets matching filters."""
+        with self._get_connection() as conn:
+            query = """
+                SELECT COUNT(*) as count
+                FROM bet_history bh
+                LEFT JOIN fixtures f ON bh.fixture_id = f.fixture_id
+                WHERE 1=1
+            """
+            params = []
+            
+            if result:
+                query += " AND bh.result = ?"
+                params.append(result)
+            
+            if model_market:
+                query += " AND bh.model_market = ?"
+                params.append(model_market)
+            
+            if market_name:
+                query += " AND bh.market_name LIKE ?"
+                params.append(f"%{market_name}%")
+            
+            if outcome_name:
+                query += " AND bh.outcome_name LIKE ?"
+                params.append(f"%{outcome_name}%")
+            
+            if tournament_name:
+                query += " AND f.tournament_name LIKE ?"
+                params.append(f"%{tournament_name}%")
+            
+            if date_from:
+                query += " AND DATE(bh.placed_at) >= ?"
+                params.append(date_from)
+            
+            if date_to:
+                query += " AND DATE(bh.placed_at) <= ?"
+                params.append(date_to)
+            
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return result[0] if result else 0
     
     def get_pending_bets(self) -> pd.DataFrame:
         """Get all pending bets."""

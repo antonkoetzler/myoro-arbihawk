@@ -7,10 +7,13 @@ import subprocess
 import threading
 import logging
 import platform
+import json
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from data.database import Database
 from data.ingestion import DataIngestionService
@@ -53,12 +56,13 @@ class AutomationScheduler:
         self.settlement = BetSettlement(self.db)
         self.backup = DatabaseBackup()
         self.metrics = MetricsCollector(self.db)
-        self.betting_service = BettingService(self.db)
+        self.betting_service = BettingService(self.db, log_callback=self._log)
         
         # Configuration
         self.collection_schedule = config.COLLECTION_SCHEDULE
         self.training_schedule = config.TRAINING_SCHEDULE
         self.scraper_args = config.SCRAPER_ARGS
+        self.scraper_workers = config.SCRAPER_WORKERS
         
         # State
         self._running = False
@@ -70,6 +74,13 @@ class AutomationScheduler:
         self._last_training = None
         self._last_betting = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
+        
+        # Performance metrics
+        self._last_collection_duration = None
+        self._last_training_duration = None
+        self._last_betting_duration = None
+        self._last_full_run_duration = None
+        self._scraper_durations: Dict[str, float] = {}
         
         # Scraper paths (relative to arbihawk root)
         self.scrapers_dir = Path(__file__).parent.parent / "scrapers"
@@ -93,7 +104,8 @@ class AutomationScheduler:
     
     def _log(self, level: str, message: str) -> None:
         """Log a message with timestamp."""
-        timestamp = datetime.now().isoformat()
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d ~ %H:%M:%S")
         entry = {
             "timestamp": timestamp,
             "level": level,
@@ -123,7 +135,13 @@ class AutomationScheduler:
             "last_collection": self._last_collection,
             "last_training": self._last_training,
             "last_betting": getattr(self, '_last_betting', None),
-            "log_count": len(self._logs)
+            "log_count": len(self._logs),
+            # Performance metrics
+            "last_collection_duration_seconds": self._last_collection_duration,
+            "last_training_duration_seconds": self._last_training_duration,
+            "last_betting_duration_seconds": self._last_betting_duration,
+            "last_full_run_duration_seconds": self._last_full_run_duration,
+            "scraper_durations_seconds": self._scraper_durations.copy()
         }
     
     def run_collection(self) -> Dict[str, Any]:
@@ -163,19 +181,26 @@ class AutomationScheduler:
                 result["stopped"] = True
                 return result
             
-            # Run Betano scraper
-            self._log("info", "Starting Betano scraper...")
+            # Run Betano scraper in parallel mode
+            self._log("info", "=" * 60)
+            self._log("info", "Starting Betano scraper (PARALLEL MODE)...")
+            self._log("info", f"Workers: {self.scraper_workers.get('max_workers_leagues', 5)}")
+            self._log("info", "=" * 60)
+            betano_start = time.time()
             try:
-                betano_result = self._run_scraper("betano")
+                betano_result = self._run_scraper_parallel("betano")
                 if not betano_result.get("success"):
                     self._log("error", f"Betano failed: {betano_result.get('error', 'Unknown error')}")
             except Exception as e:
                 self._log("error", f"Betano exception: {e}")
                 betano_result = {"success": False, "error": str(e), "records": 0}
+            betano_duration = time.time() - betano_start
+            self._scraper_durations["betano"] = betano_duration
             result["betano"] = betano_result
+            result["betano"]["duration_seconds"] = betano_duration
             
             if betano_result.get("success"):
-                self._log("success", f"✓ Betano completed: {betano_result.get('records', 0)} records ingested")
+                self._log("success", f"✓ Betano completed: {betano_result.get('records', 0)} records in {betano_duration/60:.1f} min")
             else:
                 self._log("error", f"Betano failed: {betano_result.get('error', 'Unknown')}")
                 result["errors"].append(f"Betano: {betano_result.get('error', 'Unknown')}")
@@ -186,19 +211,28 @@ class AutomationScheduler:
                 result["stopped"] = True
                 return result
             
-            # Run Flashscore scraper (primary)
-            self._log("info", "Starting Flashscore scraper...")
+            # Run Flashscore scraper in parallel mode
+            self._log("info", "=" * 60)
+            self._log("info", "Starting Flashscore scraper (PARALLEL MODE)...")
+            playwright_workers = self.scraper_workers.get('max_workers_leagues_playwright', 3)
+            odds_workers = self.scraper_workers.get('max_workers_odds', 5)
+            self._log("info", f"Workers: {playwright_workers} leagues, {odds_workers} odds")
+            self._log("info", "=" * 60)
+            flashscore_start = time.time()
             try:
-                flashscore_result = self._run_scraper("flashscore")
+                flashscore_result = self._run_scraper_parallel("flashscore")
                 if not flashscore_result.get("success"):
                     self._log("error", f"Flashscore failed: {flashscore_result.get('error', 'Unknown error')}")
             except Exception as e:
                 self._log("error", f"Flashscore exception: {e}")
                 flashscore_result = {"success": False, "error": str(e), "records": 0}
+            flashscore_duration = time.time() - flashscore_start
+            self._scraper_durations["flashscore"] = flashscore_duration
             result["flashscore"] = flashscore_result
+            result["flashscore"]["duration_seconds"] = flashscore_duration
             
             if flashscore_result.get("success"):
-                self._log("success", f"✓ Flashscore completed: {flashscore_result.get('records', 0)} records ingested")
+                self._log("success", f"✓ Flashscore completed: {flashscore_result.get('records', 0)} records in {flashscore_duration/60:.1f} min")
             else:
                 self._log("warning", f"Flashscore failed: {flashscore_result.get('error', 'Unknown')}")
                 result["errors"].append(f"Flashscore: {flashscore_result.get('error', 'Unknown')}")
@@ -212,6 +246,7 @@ class AutomationScheduler:
             # Run Livescore scraper (fallback if Flashscore failed)
             if not flashscore_result.get("success"):
                 self._log("info", "Flashscore failed, trying Livescore as fallback...")
+                livescore_start = time.time()
                 try:
                     livescore_result = self._run_scraper("livescore")
                     if not livescore_result.get("success"):
@@ -219,10 +254,13 @@ class AutomationScheduler:
                 except Exception as e:
                     self._log("error", f"Livescore exception: {e}")
                     livescore_result = {"success": False, "error": str(e), "records": 0}
+                livescore_duration = time.time() - livescore_start
+                self._scraper_durations["livescore"] = livescore_duration
                 result["livescore"] = livescore_result
+                result["livescore"]["duration_seconds"] = livescore_duration
                 
                 if livescore_result.get("success"):
-                    self._log("success", f"✓ Livescore completed: {livescore_result.get('records', 0)} records ingested")
+                    self._log("success", f"✓ Livescore completed: {livescore_result.get('records', 0)} records in {livescore_duration:.1f}s")
                 else:
                     self._log("error", f"Livescore failed: {livescore_result.get('error', 'Unknown')}")
                     result["errors"].append(f"Livescore: {livescore_result.get('error', 'Unknown')}")
@@ -309,7 +347,9 @@ class AutomationScheduler:
                 )
             
             self._last_collection = datetime.now().isoformat()
-            self._log("info", f"Collection completed in {duration_ms/1000:.1f}s")
+            self._last_collection_duration = duration_ms / 1000
+            result["duration_seconds"] = self._last_collection_duration
+            self._log("info", f"Collection completed in {duration_ms/1000/60:.1f} minutes")
             
         except Exception as e:
             result["success"] = False
@@ -321,14 +361,221 @@ class AutomationScheduler:
         
         return result
     
+    def _discover_betano_leagues(self) -> List[int]:
+        """Discover all Betano league IDs by running a quick discovery."""
+        import os
+        try:
+            script_path = self.betano_script
+            python_exe = str(self.scrapers_python.resolve())
+            
+            # Run a quick Python script to discover leagues
+            discover_code = f"""
+import sys
+import json
+sys.path.insert(0, r'{script_path.parent.parent}')
+from sportsbooks.betano import BetanoScraper
+scraper = BetanoScraper(delay=0.5)
+leagues = scraper.discover_leagues()
+league_ids = [l['id'] for l in leagues]
+print(json.dumps(league_ids))
+"""
+            env = os.environ.copy()
+            env['PYTHONUNBUFFERED'] = '1'
+            
+            result = subprocess.run(
+                [python_exe, "-c", discover_code],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(script_path.parent.parent),
+                env=env
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                league_ids = json.loads(result.stdout.strip())
+                return league_ids
+        except Exception as e:
+            self._log("warning", f"Failed to discover Betano leagues: {e}")
+        
+        return []
+    
+    def _discover_flashscore_leagues(self) -> List[str]:
+        """Discover all FlashScore league names from config."""
+        try:
+            # Temporarily add scrapers src to path
+            scrapers_src = str(self.scrapers_dir / "src")
+            if scrapers_src not in sys.path:
+                sys.path.insert(0, scrapers_src)
+            from shared.league_config import get_flashscore_leagues
+            leagues = get_flashscore_leagues()
+            return list(leagues.keys())
+        except Exception as e:
+            self._log("warning", f"Failed to discover FlashScore leagues: {e}")
+            return []
+    
+    def _run_single_league_scraper(
+        self, 
+        source: str, 
+        league_identifier: str,
+        max_workers_odds: int = 15,
+        worker_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Run scraper for a single league.
+        
+        Args:
+            source: "betano" or "flashscore"
+            league_identifier: League ID (for Betano) or league name (for FlashScore)
+            max_workers_odds: Max workers for odds fetching (FlashScore only)
+            
+        Returns:
+            Result dict with success status and records
+        """
+        if source == "betano":
+            script_path = self.betano_script
+            args = list(self.scraper_args.get("betano", []))
+            args.extend(["--league-id", str(league_identifier)])
+        elif source == "flashscore":
+            script_path = self.flashscore_script
+            args = list(self.scraper_args.get("flashscore", ["--headless"]))
+            args.extend([
+                "--league", league_identifier,
+                "--max-workers-odds", str(max_workers_odds),
+                "--market-types", "HOME_DRAW_AWAY", "OVER_UNDER", "BOTH_TEAMS_TO_SCORE"
+            ])
+        else:
+            return {"success": False, "error": f"Unknown source: {source}"}
+        
+        if not script_path.exists():
+            return {"success": False, "error": f"Scraper not found: {script_path}"}
+        
+        if not self.scrapers_python.exists():
+            return {
+                "success": False,
+                "error": f"Scrapers venv not found: {self.scrapers_python}"
+            }
+        
+        python_exe = str(self.scrapers_python.resolve())
+        script_path_str = str(script_path.resolve())
+        cmd_parts = [python_exe, script_path_str] + args
+        
+        # Run scraper and capture output with worker_id
+        result = self.ingestion.ingest_from_subprocess(
+            cmd_parts,
+            source,
+            timeout=None,
+            log_callback=self._log,
+            stop_event=self._stop_task_event,
+            worker_id=worker_id
+        )
+        
+        # Completion logging is handled in _run_scraper_parallel
+        
+        return result
+    
+    def _run_scraper_parallel(self, source: str) -> Dict[str, Any]:
+        """Run scraper in parallel mode - multiple workers calling scraper per league.
+        
+        Args:
+            source: "betano" or "flashscore"
+            
+        Returns:
+            Result dict with collection stats
+        """
+        import os
+        # Use playwright workers for FlashScore (browser-based), regular workers for Betano
+        if source == "flashscore":
+            max_workers = self.scraper_workers.get("max_workers_leagues_playwright", 3)
+        else:
+            max_workers = self.scraper_workers.get("max_workers_leagues", 5)
+        max_workers_odds = self.scraper_workers.get("max_workers_odds", 5)
+        
+        self._log("info", f"Starting parallel {source} scraping with {max_workers} workers...")
+        
+        # Discover leagues
+        if source == "betano":
+            leagues = self._discover_betano_leagues()
+            if not leagues:
+                # Fallback to old method if discovery fails
+                self._log("warning", "League discovery failed, falling back to sequential mode")
+                return self._run_scraper("betano")
+        elif source == "flashscore":
+            leagues = self._discover_flashscore_leagues()
+            if not leagues:
+                self._log("error", "No FlashScore leagues found")
+                return {"success": False, "error": "No leagues found", "records": 0}
+        else:
+            return {"success": False, "error": f"Unknown source: {source}", "records": 0}
+        
+        self._log("info", f"Discovered {len(leagues)} {source} leagues")
+        self._log("info", f"Starting {max_workers} parallel workers to process leagues...")
+        
+        # Use ThreadPoolExecutor to run multiple scraper instances in parallel
+        all_results = []
+        failed_leagues = []
+        total_records = 0
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all league scraping tasks with worker IDs
+            self._log("info", f"Submitting {len(leagues)} league scraping tasks to worker pool...")
+            futures = {
+                executor.submit(
+                    self._run_single_league_scraper,
+                    source,
+                    league,
+                    max_workers_odds,
+                    (idx % max_workers) + 1  # Worker ID cycles 1-5
+                ): (league, (idx % max_workers) + 1)
+                for idx, league in enumerate(leagues)
+            }
+            self._log("info", f"All tasks submitted - {max_workers} workers processing leagues in parallel")
+            
+            completed = 0
+            for future in as_completed(futures):
+                league, worker_id = futures[future]
+                if self._stop_task_event.is_set():
+                    self._log("info", f"Stopping {source} scraping...")
+                    # Cancel remaining futures
+                    for f in futures:
+                        if not f.done():
+                            f.cancel()
+                    break
+                
+                try:
+                    result = future.result()
+                    completed += 1
+                    
+                    if result.get("success"):
+                        records = result.get("records", 0)
+                        total_records += records
+                        all_results.append(result)
+                        self._log("info", f"[WORKER #{worker_id}] [{source.upper()}] Completed: {league} - {records} records ({completed}/{len(leagues)})")
+                    else:
+                        failed_leagues.append(league)
+                        error = result.get("error", "Unknown")
+                        self._log("warning", f"[WORKER #{worker_id}] [{source.upper()}] Failed: {league} - {error}")
+                except Exception as e:
+                    failed_leagues.append(league)
+                    self._log("error", f"[WORKER #{worker_id}] [{source.upper()}] Exception: {league} - {e}")
+        
+        success = len(all_results) > 0
+        self._log("info", f"{source} parallel scraping complete: {completed}/{len(leagues)} leagues, {total_records} total records")
+        
+        return {
+            "success": success,
+            "records": total_records,
+            "leagues_processed": completed,
+            "leagues_total": len(leagues),
+            "failed_leagues": failed_leagues
+        }
+    
     def _run_scraper(self, source: str) -> Dict[str, Any]:
-        """Run a scraper and ingest its output."""
+        """Run a scraper in sequential mode (legacy, for Livescore and fallback)."""
         if source == "betano":
             script_path = self.betano_script
             args = self.scraper_args.get("betano", [])
         elif source == "flashscore":
             script_path = self.flashscore_script
-            args = self.scraper_args.get("flashscore", ["--headless"])
+            args = list(self.scraper_args.get("flashscore", ["--headless"]))
         elif source == "livescore":
             script_path = self.livescore_script
             args = self.scraper_args.get("livescore", ["--no-proxy"])
@@ -338,28 +585,24 @@ class AutomationScheduler:
         if not script_path.exists():
             return {"success": False, "error": f"Scraper not found: {script_path}"}
         
-        # Check if scrapers venv exists
         if not self.scrapers_python.exists():
             return {
                 "success": False,
-                "error": f"Scrapers venv not found. Run 'Setup: Initialize Scrapers Venv' task first. Expected: {self.scrapers_python}"
+                "error": f"Scrapers venv not found: {self.scrapers_python}"
             }
         
-        # Use scrapers venv Python interpreter
         python_exe = str(self.scrapers_python.resolve())
         script_path_str = str(script_path.resolve())
-        
-        # Build command as list for proper subprocess handling
         cmd_parts = [python_exe, script_path_str] + args
         
         self._log("info", f"Executing: {' '.join(cmd_parts)}")
         
-        # Run scraper and capture output with real-time logging
         result = self.ingestion.ingest_from_subprocess(
-            cmd_parts, 
-            source, 
+            cmd_parts,
+            source,
             timeout=None,
-            log_callback=self._log
+            log_callback=self._log,
+            stop_event=self._stop_task_event
         )
         
         if not result.get("success"):
@@ -418,9 +661,21 @@ class AutomationScheduler:
             # Run training
             self._log("info", "Starting model training...")
             
+            # Check if stopped before training
+            if self._stop_task_event.is_set():
+                self._log("info", "Training stopped by user before starting")
+                result["stopped"] = True
+                return result
+            
             # Import train module and run
             from train import train_models
-            success, metrics = train_models(self.db)
+            success, metrics = train_models(self.db, log_callback=self._log)
+            
+            # Check if stopped after training
+            if self._stop_task_event.is_set():
+                self._log("info", "Training stopped by user after completion")
+                result["stopped"] = True
+                return result
             
             result["success"] = success
             result["metrics"] = metrics
@@ -456,6 +711,8 @@ class AutomationScheduler:
             self._last_training = datetime.now().isoformat()
             
             duration_ms = (time.time() - start_time) * 1000
+            self._last_training_duration = duration_ms / 1000
+            result["duration_seconds"] = self._last_training_duration
             self._log("info", f"Training cycle completed in {duration_ms/1000:.1f}s")
             
         except Exception as e:
@@ -486,6 +743,144 @@ class AutomationScheduler:
             "success": collection_result.get("success", False) and training_result.get("success", False)
         }
     
+    def run_full_with_betting(self) -> Dict[str, Any]:
+        """
+        Run full cycle with betting: collection + training + betting.
+        
+        Returns:
+            Combined result dict
+        """
+        # Store the original task name if we're being called as part of a full_run
+        original_task = self._current_task
+        was_full_run = original_task == "full_run"
+        if not was_full_run:
+            self._current_task = "full_run"
+        
+        self._log("info", "Starting full cycle with betting...")
+        full_run_start = time.time()
+        
+        try:
+            # Temporarily restore full_run task name before each phase
+            # (nested tasks will set their own, but we want to restore full_run after)
+            collection_result = self.run_collection()
+            if was_full_run:
+                self._current_task = "full_run"
+            
+            # Log collection completion
+            if collection_result.get("success"):
+                self._log("success", "Collection phase completed successfully")
+            else:
+                self._log("warning", "Collection phase completed with errors")
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                return {
+                    "collection": collection_result,
+                    "training": {"success": False, "skipped": True, "reason": "Stopped"},
+                    "betting": {"success": False, "skipped": True, "reason": "Stopped"},
+                    "success": False,
+                    "stopped": True
+                }
+            
+            # Log transition to training
+            self._log("info", "=" * 60)
+            self._log("info", "Starting Training phase...")
+            self._log("info", "=" * 60)
+            
+            training_result = self.run_training()
+            if was_full_run:
+                self._current_task = "full_run"
+            
+            # Log training completion
+            if training_result.get("success"):
+                self._log("success", "Training phase completed successfully")
+            else:
+                self._log("warning", "Training phase completed with errors")
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                return {
+                    "collection": collection_result,
+                    "training": training_result,
+                    "betting": {"success": False, "skipped": True, "reason": "Stopped"},
+                    "success": False,
+                    "stopped": True
+                }
+            
+            # Log transition to betting
+            self._log("info", "=" * 60)
+            self._log("info", "Starting Betting phase...")
+            self._log("info", "=" * 60)
+            
+            betting_result = self.run_betting()
+            if was_full_run:
+                self._current_task = "full_run"
+            
+            # Log betting completion
+            if betting_result.get("success"):
+                if betting_result.get("skipped"):
+                    self._log("info", f"Betting phase skipped: {betting_result.get('reason', 'Unknown')}")
+                else:
+                    self._log("success", "Betting phase completed successfully")
+            else:
+                self._log("warning", "Betting phase completed with errors")
+            
+            # Settle any pending bets that now have scores available
+            # (bets placed during this run might have scores from collection phase)
+            if not self._stop_task_event.is_set():
+                self._log("info", "Settling pending bets...")
+                settlement_result = self.settlement.settle_pending_bets()
+                if settlement_result.get("settled", 0) > 0:
+                    self._log("info", f"Settled {settlement_result.get('settled', 0)} bets")
+            
+            full_run_duration = time.time() - full_run_start
+            self._last_full_run_duration = full_run_duration
+            self._log("success", f"Full run completed in {full_run_duration/60:.1f} minutes")
+            
+            return {
+                "collection": collection_result,
+                "training": training_result,
+                "betting": betting_result,
+                "success": (
+                    collection_result.get("success", False) and 
+                    training_result.get("success", False) and
+                    betting_result.get("success", False)
+                ),
+                "duration_seconds": full_run_duration
+            }
+        finally:
+            # Only clear task if we set it (i.e., we were the top-level caller)
+            # If called from trigger_full_run, that function's finally block will clear it
+            if not was_full_run:
+                self._current_task = None
+            elif was_full_run and original_task != "full_run":
+                # Restore original if we overwrote something else
+                self._current_task = original_task
+    
+    def trigger_full_run(self) -> Dict[str, Any]:
+        """Manually trigger full run (collection + training + betting). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                # Set task status and clear stop event before starting
+                self._current_task = "full_run"
+                self._stop_task_event.clear()
+                self.run_full_with_betting()
+            except Exception as e:
+                self._log("error", f"Background full run failed: {e}")
+            finally:
+                # Clear task status when done - ensure this happens even if interrupted
+                self._current_task = None
+                # Clear stop event to allow future tasks
+                self._stop_task_event.clear()
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Full run started in background"}
+    
     def start_daemon(self, interval_seconds: int = 21600) -> None:
         """
         Start scheduler in daemon mode.
@@ -504,11 +899,15 @@ class AutomationScheduler:
         
         while not self._stop_event.is_set():
             try:
-                self.run_full_cycle()
+                self.run_full_with_betting()
             except Exception as e:
                 self._log("error", f"Cycle error: {e}")
             
-            # Wait for next cycle
+            # Check if stopped before waiting
+            if self._stop_event.is_set():
+                break
+            
+            # Wait for next cycle (with interruptible wait)
             self._stop_event.wait(interval_seconds)
         
         self._running = False
@@ -524,13 +923,16 @@ class AutomationScheduler:
         self._stop_event.set()
     
     def stop_task(self) -> Dict[str, Any]:
-        """Stop the currently running task (collection or training)."""
+        """Stop the currently running task (collection, training, betting, or full_run)."""
         if not self._current_task:
             return {"success": False, "message": "No task is currently running"}
         
         task_name = self._current_task
         self._log("info", f"Stopping {task_name}...")
         self._stop_task_event.set()
+        
+        # Don't clear _current_task here - let the task's finally block handle it
+        # This ensures proper cleanup and prevents race conditions
         
         return {"success": True, "message": f"Stop signal sent to {task_name}"}
     
@@ -541,9 +943,15 @@ class AutomationScheduler:
         
         def run_in_background():
             try:
+                # Clear stop event before starting (run_collection will set _current_task)
+                self._stop_task_event.clear()
                 self.run_collection()
             except Exception as e:
                 self._log("error", f"Background collection failed: {e}")
+            finally:
+                # Ensure task is cleared even if run_collection doesn't clear it
+                if self._current_task == "collection":
+                    self._current_task = None
         
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -557,9 +965,15 @@ class AutomationScheduler:
         
         def run_in_background():
             try:
+                # Clear stop event before starting (run_training will set _current_task)
+                self._stop_task_event.clear()
                 self.run_training()
             except Exception as e:
                 self._log("error", f"Background training failed: {e}")
+            finally:
+                # Ensure task is cleared even if run_training doesn't clear it
+                if self._current_task == "training":
+                    self._current_task = None
         
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -638,6 +1052,8 @@ class AutomationScheduler:
             self._last_betting = datetime.now().isoformat()
             
             duration_ms = (time.time() - start_time) * 1000
+            self._last_betting_duration = duration_ms / 1000
+            result["duration_seconds"] = self._last_betting_duration
             self._log("info", f"Betting cycle completed in {duration_ms/1000:.1f}s")
             
         except Exception as e:
@@ -650,6 +1066,24 @@ class AutomationScheduler:
         
         return result
     
+    def set_scraper_workers(self, max_workers_leagues: int = None, max_workers_odds: int = None, max_workers_leagues_playwright: int = None) -> None:
+        """Update scraper worker counts.
+        
+        Args:
+            max_workers_leagues: Max parallel workers for league scraping (Betano)
+            max_workers_odds: Max parallel workers for odds fetching
+            max_workers_leagues_playwright: Max parallel workers for Playwright-based scrapers (FlashScore)
+        """
+        if max_workers_leagues is not None:
+            self.scraper_workers["max_workers_leagues"] = max_workers_leagues
+            self._log("info", f"Updated league workers to: {max_workers_leagues}")
+        if max_workers_odds is not None:
+            self.scraper_workers["max_workers_odds"] = max_workers_odds
+            self._log("info", f"Updated odds workers to: {max_workers_odds}")
+        if max_workers_leagues_playwright is not None:
+            self.scraper_workers["max_workers_leagues_playwright"] = max_workers_leagues_playwright
+            self._log("info", f"Updated playwright league workers to: {max_workers_leagues_playwright}")
+    
     def trigger_betting(self) -> Dict[str, Any]:
         """Manually trigger betting (for dashboard). Runs in background thread."""
         if self._current_task:
@@ -657,12 +1091,43 @@ class AutomationScheduler:
         
         def run_in_background():
             try:
+                # Clear stop event before starting (run_betting will set _current_task)
+                self._stop_task_event.clear()
                 self.run_betting()
             except Exception as e:
                 self._log("error", f"Background betting failed: {e}")
+            finally:
+                # Ensure task is cleared even if run_betting doesn't clear it
+                if self._current_task == "betting":
+                    self._current_task = None
         
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
         
         return {"success": True, "message": "Betting started in background"}
-
+    
+    def trigger_backtest(self, train_start: str, test_start: str, test_end: str,
+                        period_days: int = 30, ev_threshold: Optional[float] = None) -> Dict[str, Any]:
+        """Manually trigger backtesting (for dashboard). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                from backtesting.backtest import BacktestEngine
+                self._log("info", f"Starting backtest: {train_start} to {test_end}")
+                engine = BacktestEngine(ev_threshold=ev_threshold)
+                result = engine.run_backtest(
+                    train_start=train_start,
+                    test_start=test_start,
+                    test_end=test_end,
+                    period_days=period_days
+                )
+                self._log("success", f"Backtest completed: {result.overall_metrics.get('total_bets', 0)} bets, ROI: {result.overall_metrics.get('roi', 0):.2%}")
+            except Exception as e:
+                self._log("error", f"Background backtest failed: {e}")
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Backtest started in background"}

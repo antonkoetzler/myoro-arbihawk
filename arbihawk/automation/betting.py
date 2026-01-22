@@ -2,7 +2,7 @@
 Betting service for automated bet placement using trained models.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
 import logging
 
@@ -24,7 +24,7 @@ class BettingService:
     Loads active models, finds value bets, and places them via VirtualBankroll.
     """
     
-    def __init__(self, db: Optional[Database] = None, bankroll: Optional[VirtualBankroll] = None):
+    def __init__(self, db: Optional[Database] = None, bankroll: Optional[VirtualBankroll] = None, log_callback: Optional[Callable[[str, str], None]] = None):
         """
         Initialize betting service.
         
@@ -35,6 +35,7 @@ class BettingService:
         self.db = db or Database()
         self.bankroll = bankroll or VirtualBankroll(self.db)
         self.version_manager = ModelVersionManager(self.db)
+        self.log_callback = log_callback
     
     def place_bets_for_all_models(self, limit_per_model: int = 10) -> Dict[str, Any]:
         """
@@ -55,6 +56,9 @@ class BettingService:
             "errors": []
         }
         
+        if self.log_callback:
+            self.log_callback("info", f"Processing {len(markets)} models for betting...")
+        
         for market in markets:
             try:
                 model_result = self.place_bets_for_model(market, limit=limit_per_model)
@@ -66,7 +70,10 @@ class BettingService:
                     results["errors"].append(f"{market}: {model_result.get('error', 'Unknown error')}")
             except Exception as e:
                 error_msg = f"Error placing bets for {market}: {str(e)}"
-                logger.error(error_msg, exc_info=True)
+                if self.log_callback:
+                    self.log_callback("error", error_msg)
+                else:
+                    logger.error(error_msg, exc_info=True)
                 results["errors"].append(error_msg)
                 results["by_model"][market] = {
                     "success": False,
@@ -77,6 +84,12 @@ class BettingService:
         
         if len(results["errors"]) > 0:
             results["success"] = False
+        
+        if self.log_callback:
+            if results["total_bets_placed"] > 0:
+                self.log_callback("success", f"✓ Betting complete: {results['total_bets_placed']} total bets placed, ${results['total_stake']:.2f} total stake")
+            else:
+                self.log_callback("info", "Betting complete: No bets placed")
         
         return results
     
@@ -101,26 +114,39 @@ class BettingService:
         }
         
         try:
+            if self.log_callback:
+                self.log_callback("info", f"Processing {market} market...")
+            
             # Get active model version
             active_version = self.version_manager.get_active_version(market)
             if not active_version:
                 result["error"] = f"No active model found for {market}"
+                if self.log_callback:
+                    self.log_callback("warning", f"No active model found for {market}")
                 return result
             
             model_path = active_version.get('model_path')
             if not model_path or not Path(model_path).exists():
                 result["error"] = f"Model file not found: {model_path}"
+                if self.log_callback:
+                    self.log_callback("error", result["error"])
                 return result
             
             # Load model
+            if self.log_callback:
+                self.log_callback("info", f"-> Loading model from {model_path}")
             predictor = BettingPredictor(market=market)
             predictor.load(model_path)
             
             if not predictor.is_trained:
                 result["error"] = f"Model for {market} is not trained"
+                if self.log_callback:
+                    self.log_callback("error", result["error"])
                 return result
             
             # Create value bet engine
+            if self.log_callback:
+                self.log_callback("info", f"-> Finding value bets (EV threshold: {config.EV_THRESHOLD})...")
             engine = ValueBetEngine(predictor, self.db, ev_threshold=config.EV_THRESHOLD)
             
             # Find value bets - map market names
@@ -130,17 +156,24 @@ class BettingService:
             if len(value_bets) == 0:
                 result["success"] = True
                 result["error"] = "No value bets found"
+                if self.log_callback:
+                    self.log_callback("info", f"No value bets found for {market}")
                 return result
+            
+            if self.log_callback:
+                self.log_callback("info", f"Found {len(value_bets)} value bets, limiting to top {limit}")
             
             # Limit to top N bets
             value_bets = value_bets.head(limit)
             
             # Place bets
+            if self.log_callback:
+                self.log_callback("info", f"-> Placing bets...")
             bets_placed = 0
             total_stake = 0.0
             bet_ids = []
             
-            for _, bet_row in value_bets.iterrows():
+            for idx, bet_row in value_bets.iterrows():
                 try:
                     # Get confidence from probability
                     confidence = bet_row.get('probability', 0.5)
@@ -148,6 +181,8 @@ class BettingService:
                     # Calculate stake before placing (to track it)
                     stake = self.bankroll.calculate_stake(bet_row['odds'], confidence)
                     if stake <= 0 or stake > self.bankroll.balance:
+                        if self.log_callback:
+                            self.log_callback("warning", f"Skipping bet (stake: ${stake:.2f}, balance: ${self.bankroll.balance:.2f})")
                         continue
                     
                     # Place bet
@@ -166,8 +201,14 @@ class BettingService:
                         bets_placed += 1
                         total_stake += stake
                         bet_ids.append(bet_id)
+                        if self.log_callback:
+                            outcome = bet_row.get('outcome', 'unknown')
+                            self.log_callback("info", f"  ✓ Placed bet #{bet_id}: {outcome} @ {bet_row['odds']:.2f} odds, ${stake:.2f} stake")
                 except Exception as e:
-                    logger.warning(f"Failed to place bet for {bet_row.get('fixture_id')}: {e}")
+                    if self.log_callback:
+                        self.log_callback("warning", f"Failed to place bet: {e}")
+                    else:
+                        logger.warning(f"Failed to place bet for {bet_row.get('fixture_id')}: {e}")
                     continue
             
             result["success"] = True
@@ -175,8 +216,17 @@ class BettingService:
             result["total_stake"] = total_stake
             result["bet_ids"] = bet_ids
             
+            if self.log_callback:
+                if bets_placed > 0:
+                    self.log_callback("success", f"✓ {market}: {bets_placed} bets placed, ${total_stake:.2f} total stake")
+                else:
+                    self.log_callback("info", f"{market}: No bets placed")
+            
         except Exception as e:
-            logger.error(f"Error in place_bets_for_model for {market}: {e}", exc_info=True)
             result["error"] = str(e)
+            if self.log_callback:
+                self.log_callback("error", f"Error processing {market}: {e}")
+            else:
+                logger.error(f"Error in place_bets_for_model for {market}: {e}", exc_info=True)
         
         return result

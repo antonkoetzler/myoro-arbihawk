@@ -68,7 +68,9 @@ class DataIngestionService:
     def ingest_from_subprocess(self, command, source: str,
                                 args: List[str] = None,
                                 timeout: Optional[int] = None,
-                                log_callback: Optional[Callable[[str, str], None]] = None) -> Dict[str, Any]:
+                                log_callback: Optional[Callable[[str, str], None]] = None,
+                                stop_event: Optional[threading.Event] = None,
+                                worker_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Execute scraper subprocess and ingest its output.
         Streams output in real-time and logs it via callback.
@@ -148,6 +150,25 @@ class DataIngestionService:
             # Process lines as they come with timeout
             start_time = time.time()
             while True:
+                # Check stop event
+                if stop_event and stop_event.is_set():
+                    if log_callback:
+                        log_callback("info", "Stop requested, terminating scraper...")
+                    process.terminate()
+                    # Give it a moment to terminate gracefully
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if it doesn't terminate
+                        process.kill()
+                        process.wait()
+                    return {
+                        "success": False,
+                        "error": "Scraper stopped by user",
+                        "records": 0,
+                        "stopped": True
+                    }
+                
                 try:
                     # Get line with timeout
                     try:
@@ -203,11 +224,11 @@ class DataIngestionService:
                                 
                                 # Also log it in case it's a log message starting with [
                                 if len(clean_line) > 3 and len(clean_line) < 500 and not json_str:
-                                    self._process_scraper_line(line, log_callback)
+                                    self._process_scraper_line(line, log_callback, source, worker_id)
                         else:
                             # Log TUI messages in real-time (skip empty lines and very short lines)
                             if len(clean_line) > 3:
-                                self._process_scraper_line(line, log_callback)
+                                self._process_scraper_line(line, log_callback, source, worker_id)
                     
                     # Check if reader is done and queue is empty
                     if read_complete.is_set() and output_queue.empty():
@@ -424,8 +445,9 @@ class DataIngestionService:
         
         return None
     
-    def _process_scraper_line(self, line: str, log_callback: Optional[Callable[[str, str], None]]) -> None:
-        """Process a line from scraper output and log it appropriately."""
+    def _process_scraper_line(self, line: str, log_callback: Optional[Callable[[str, str], None]], 
+                              source: str = None, worker_id: Optional[int] = None) -> None:
+        """Process a line from scraper output and log it appropriately with worker/service prefixes."""
         if not log_callback:
             return
         
@@ -437,17 +459,33 @@ class DataIngestionService:
             if not clean_line:
                 return
             
+            # Skip header lines (=== separators)
+            if clean_line.startswith('===') or clean_line.startswith('=' * 20):
+                return
+            
+            # Skip "BETANO SCRAPER" / "FLASHSCORE SCRAPER" header lines
+            if 'SCRAPER' in clean_line.upper() and ('BETANO' in clean_line.upper() or 'FLASHSCORE' in clean_line.upper()):
+                return
+            
+            # Skip JSON formatting lines (pretty-printed JSON fields)
+            # These are lines that look like JSON object/array formatting
+            stripped_clean = clean_line.strip()
+            if (stripped_clean.startswith('"') and (':' in stripped_clean or stripped_clean.endswith(','))) or \
+               stripped_clean in ['{', '}', '[', ']', ','] or \
+               (stripped_clean.startswith(' ') and (stripped_clean.strip().startswith('"') or stripped_clean.strip() in ['{', '}', '[', ']', ','])):
+                return
+            
             # Determine log level based on Unicode symbols first
             log_level = "info"  # Default
             
             # Check for Unicode symbols and extract log level
-            if '✗' in clean_line:
+            if '✗' in clean_line or '❌' in clean_line:
                 log_level = "error"
-            elif '⚠' in clean_line:
+            elif '⚠' in clean_line or '⚠️' in clean_line:
                 log_level = "warning"
-            elif '✓' in clean_line:
+            elif '✓' in clean_line or '✅' in clean_line:
                 log_level = "success"
-            elif 'ℹ' in clean_line:
+            elif 'ℹ' in clean_line or 'ℹ️' in clean_line:
                 log_level = "info"
             # Then check for bracket prefixes
             elif '[ERROR]' in clean_line.upper():
@@ -459,12 +497,12 @@ class DataIngestionService:
             elif '[INFO]' in clean_line.upper():
                 log_level = "info"
             
-            # Remove Unicode symbols from the message
+            # Remove Unicode symbols from the message (keep emojis for readability)
             message = clean_line
+            # Only remove the TUI symbols, not emojis
             message = message.replace('ℹ', '').replace('✓', '').replace('✗', '').replace('⚠', '')
             
             # Remove all level prefixes from the message to avoid duplication
-            # This removes patterns like [INFO], [WARNING], [WARN], [ERROR], [OK], etc.
             message = re.sub(r'\[?(INFO|WARNING|WARN|ERROR|OK|SUCCESS)\]?\s*', '', message, flags=re.IGNORECASE)
             message = message.strip()
             
@@ -472,7 +510,15 @@ class DataIngestionService:
             if not message:
                 return
             
-            log_callback(log_level, message)
+            # Format with worker/service prefixes if available
+            if worker_id is not None and source:
+                formatted_message = f"[WORKER #{worker_id}] [{source.upper()}] {message}"
+            elif source:
+                formatted_message = f"[{source.upper()}] {message}"
+            else:
+                formatted_message = message
+            
+            log_callback(log_level, formatted_message)
         except Exception as e:
             # If logging fails, try to log the error itself (but don't fail completely)
             try:

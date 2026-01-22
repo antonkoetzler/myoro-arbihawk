@@ -46,6 +46,11 @@ TRAINING_SCHEDULE = _automation_config.get("training_schedule", "0 2 * * *")
 INCREMENTAL_MODE = _automation_config.get("incremental_mode", True)
 MATCHING_TOLERANCE_HOURS = _automation_config.get("matching_tolerance_hours", 2)
 SCRAPER_ARGS = _automation_config.get("scraper_args", {})
+SCRAPER_WORKERS = _automation_config.get("scraper_workers", {
+    "max_workers_leagues": 5,
+    "max_workers_odds": 5,
+    "max_workers_leagues_playwright": 3
+})
 
 # Fake money configuration
 FAKE_MONEY_CONFIG = _automation_config.get("fake_money", {
@@ -85,7 +90,7 @@ def reload_config():
     """Reload configuration from files."""
     global _config, _automation_config
     global DB_PATH, EV_THRESHOLD, COLLECTION_SCHEDULE, TRAINING_SCHEDULE
-    global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, SCRAPER_ARGS
+    global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, SCRAPER_ARGS, SCRAPER_WORKERS
     global FAKE_MONEY_CONFIG, MODEL_VERSIONING_CONFIG, METRICS_CONFIG, BACKUP_CONFIG
     global AUTO_BET_AFTER_TRAINING
     
@@ -99,6 +104,11 @@ def reload_config():
     INCREMENTAL_MODE = _automation_config.get("incremental_mode", True)
     MATCHING_TOLERANCE_HOURS = _automation_config.get("matching_tolerance_hours", 2)
     SCRAPER_ARGS = _automation_config.get("scraper_args", {})
+    SCRAPER_WORKERS = _automation_config.get("scraper_workers", {
+        "max_workers_leagues": 5,
+        "max_workers_odds": 5,
+        "max_workers_leagues_playwright": 3
+    })
     FAKE_MONEY_CONFIG = _automation_config.get("fake_money", {
         "enabled": True,
         "starting_balance": 10000,

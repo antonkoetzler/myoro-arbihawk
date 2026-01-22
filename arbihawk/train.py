@@ -6,7 +6,7 @@ Trains models for all markets (1x2, over_under, btts).
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, Callable
 
 from data.database import Database
 from data.features import FeatureEngineer
@@ -18,7 +18,7 @@ from utils.colors import (
 )
 
 
-def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
+def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[[str, str], None]] = None) -> Tuple[bool, Dict[str, Any]]:
     """
     Train prediction models for all markets.
     
@@ -28,7 +28,12 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
         - metrics.has_data: True if at least one model was trained
         - metrics.errors: List of actual errors encountered
     """
-    print_header("Model Training")
+    if log_callback:
+        log_callback("info", "=" * 60)
+        log_callback("info", "Model Training")
+        log_callback("info", "=" * 60)
+    else:
+        print_header("Model Training")
     
     markets = ['1x2', 'over_under', 'btts']
     db = db or Database()
@@ -51,36 +56,68 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
     }
     
     for market in markets:
-        print_info(f"Training {market} market")
+        if log_callback:
+            log_callback("info", f"Training {market} market")
+        else:
+            print_info(f"Training {market} market")
         
         # Create training data
-        print_step("Creating features...")
+        if log_callback:
+            log_callback("info", f"-> Creating features...")
+        else:
+            print_step("Creating features...")
         try:
             X, y = feature_engineer.create_training_data(market=market)
         except Exception as e:
             error_msg = f"Error creating features for {market}: {e}"
-            print_error(error_msg)
+            if log_callback:
+                log_callback("error", error_msg)
+            else:
+                print_error(error_msg)
             metrics["markets"][market] = {"error": str(e), "error_type": "feature_creation"}
             actual_errors.append(error_msg)
             continue
         
         if len(X) == 0 or len(y) == 0:
-            print_warning(f"No training data available. Skipping...")
+            if log_callback:
+                log_callback("warning", f"No training data available. Skipping...")
+            else:
+                print_warning(f"No training data available. Skipping...")
             metrics["markets"][market] = {"skipped": True, "reason": "No training data"}
             no_data_count += 1
             continue
         
-        print_info(f"Training data: {len(X)} samples, {len(X.columns)} features")
-        print_info(f"Label distribution:\n{y.value_counts()}")
+        if log_callback:
+            log_callback("info", f"Training data: {len(X)} samples, {len(X.columns)} features")
+        else:
+            print_info(f"Training data: {len(X)} samples, {len(X.columns)} features")
+        
+        label_dist_str = str(y.value_counts())
+        if log_callback:
+            log_callback("info", f"Label distribution:\n{label_dist_str}")
+        else:
+            print_info(f"Label distribution:\n{label_dist_str}")
         
         # Train model
-        print_step("Training model...")
+        if log_callback:
+            log_callback("info", "-> Training model...")
+        else:
+            print_step("Training model...")
         predictor = BettingPredictor(market=market)
         try:
             predictor.train(X, y)
+            # Get CV score from predictor (defaults to 0.5 if not available)
+            cv_score = getattr(predictor, 'cv_score', 0.5)
+            cv_std = getattr(predictor, 'cv_std', 0.0)
+            cv_folds = getattr(predictor, 'cv_folds', 5)
+            if log_callback:
+                log_callback("info", f"Cross-validation accuracy ({cv_folds}-fold): {cv_score:.3f} (+/- {cv_std * 2:.3f})")
         except Exception as e:
             error_msg = f"Error training model for {market}: {e}"
-            print_error(error_msg)
+            if log_callback:
+                log_callback("error", error_msg)
+            else:
+                print_error(error_msg)
             metrics["markets"][market] = {"error": str(e), "error_type": "training"}
             actual_errors.append(error_msg)
             continue
@@ -89,7 +126,10 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
         model_path = models_dir / f"{market}_model.pkl"
         try:
             predictor.save(str(model_path))
-            print_success(f"Model saved to {model_path}")
+            if log_callback:
+                log_callback("success", f"Model saved to {model_path}")
+            else:
+                print_success(f"Model saved to {model_path}")
             trained_count += 1
             
             # Get CV score from predictor (defaults to 0.5 if not available)
@@ -109,7 +149,10 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
                 },
                 activate=True
             )
-            print_info(f"Model version {version_id} saved and activated")
+            if log_callback:
+                log_callback("info", f"Model version {version_id} saved and activated")
+            else:
+                print_info(f"Model version {version_id} saved and activated")
             
             metrics["markets"][market] = {
                 "samples": len(X),
@@ -122,7 +165,10 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
             metrics["total_samples"] += len(X)
         except Exception as e:
             error_msg = f"Error saving model for {market}: {e}"
-            print_error(error_msg)
+            if log_callback:
+                log_callback("error", error_msg)
+            else:
+                print_error(error_msg)
             metrics["markets"][market] = {"error": str(e), "error_type": "save"}
             actual_errors.append(error_msg)
             continue
@@ -143,7 +189,10 @@ def train_models(db: Optional[Database] = None) -> Tuple[bool, Dict[str, Any]]:
     elif no_data_count > 0:
         metrics["no_data_reason"] = f"{no_data_count} markets skipped due to insufficient data"
     
-    print_success(f"Trained {trained_count}/{len(markets)} models")
+    if log_callback:
+        log_callback("success", f"Trained {trained_count}/{len(markets)} models")
+    else:
+        print_success(f"Trained {trained_count}/{len(markets)} models")
     return success, metrics
 
 
