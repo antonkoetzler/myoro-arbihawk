@@ -9,8 +9,8 @@ export function EmptyState({
   description,
 }: EmptyStateProps) {
   return (
-    <div className='flex flex-col items-center justify-center py-8 text-center'>
-      <div className='mb-4 rounded-full bg-slate-700/30 p-4'>
+    <div className='flex flex-col items-center justify-center h-full min-h-[200px] text-center'>
+      <div className='mb-4 rounded-full bg-slate-800/50 p-4'>
         <Icon size={24} className='text-slate-500' />
       </div>
       <p className='font-medium text-slate-400'>{title}</p>

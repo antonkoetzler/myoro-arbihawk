@@ -16,6 +16,7 @@ from typing import Dict, Any, List, Optional, Set
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import config
 from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -163,13 +164,20 @@ def get_scheduler() -> AutomationScheduler:
     return _scheduler
 
 
-def broadcast_log(level: str, message: str):
-    """Callback to broadcast log messages via WebSocket."""
+def broadcast_log(level: str, message: str, domain: str = "betting"):
+    """Callback to broadcast log messages via WebSocket.
+    
+    Args:
+        level: Log level (info, warning, error, success)
+        message: Log message
+        domain: Domain identifier (betting, trading)
+    """
     now = datetime.now()
     log_entry = {
         "timestamp": now.strftime("%Y-%m-%d ~ %H:%M:%S"),
         "level": level,
-        "message": message
+        "message": message,
+        "domain": domain
     }
     ws_manager.broadcast_sync(log_entry)
 
@@ -382,13 +390,29 @@ async def export_bets(
 async def get_model_versions(
     market: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Get model versions and performance."""
-    versions = get_versioning().get_all_versions(market=market)
+    """Get model versions and performance for betting domain."""
+    versions = get_versioning().get_all_versions(domain='betting', market=market)
+    
+    # Parse performance_metrics JSON for each version
+    for version in versions:
+        perf_metrics_str = version.get('performance_metrics')
+        if perf_metrics_str:
+            try:
+                perf_metrics = json.loads(perf_metrics_str) if isinstance(perf_metrics_str, str) else perf_metrics_str
+                version['performance_metrics'] = perf_metrics
+                
+                # Extract calibration metrics if available
+                if isinstance(perf_metrics, dict):
+                    version['brier_score'] = perf_metrics.get('brier_score')
+                    version['ece'] = perf_metrics.get('ece')
+                    version['calibration_improvement'] = perf_metrics.get('calibration_improvement')
+            except (json.JSONDecodeError, TypeError):
+                version['performance_metrics'] = {}
     
     # Get active versions for each market
     active = {}
     for m in ["1x2", "over_under", "btts"]:
-        active_v = get_versioning().get_active_version(m)
+        active_v = get_versioning().get_active_version(domain='betting', market=m)
         if active_v:
             active[m] = active_v.get("version_id")
     
@@ -546,6 +570,308 @@ async def get_automation_logs(
 
 
 # =============================================================================
+# TRADING ENDPOINTS
+# =============================================================================
+
+# Global trading service (lazy initialized)
+_trading_service = None
+
+
+def get_trading_service():
+    """Get or create trading service."""
+    global _trading_service
+    if _trading_service is None:
+        from trading.service import TradingService
+        _trading_service = TradingService(get_db(), log_callback=lambda level, msg: broadcast_log(level, msg, domain="trading"))
+    return _trading_service
+
+
+@app.post("/api/trading/collect")
+async def trigger_trading_collection() -> Dict[str, Any]:
+    """Trigger trading data collection (stocks and crypto)."""
+    scheduler = get_scheduler()
+    result = scheduler.trigger_trading_collection()
+    return result
+
+
+@app.get("/api/trading/status")
+async def get_trading_status() -> Dict[str, Any]:
+    """Get trading collection status."""
+    scheduler = get_scheduler()
+    status = scheduler.get_status()
+    
+    return {
+        "enabled": config.TRADING_CONFIG.get("enabled", False),
+        "last_collection": status.get("last_trading_collection"),
+        "last_collection_duration_seconds": status.get("last_trading_collection_duration_seconds"),
+        "watchlist": config.TRADING_CONFIG.get("watchlist", {}),
+        "api_keys_configured": {
+            "alpha_vantage": bool(config.TRADING_CONFIG.get("api_keys", {}).get("alpha_vantage")),
+            "coingecko": bool(config.TRADING_CONFIG.get("api_keys", {}).get("coingecko"))
+        }
+    }
+
+
+@app.post("/api/trading/train")
+async def trigger_trading_training() -> Dict[str, Any]:
+    """Trigger trading model training."""
+    scheduler = get_scheduler()
+    result = scheduler.trigger_trading_training()
+    return result
+
+
+@app.post("/api/trading/cycle")
+async def trigger_trading_cycle() -> Dict[str, Any]:
+    """Trigger trading cycle (signals + execution)."""
+    scheduler = get_scheduler()
+    result = scheduler.trigger_trading_cycle()
+    return result
+
+
+@app.get("/api/trading/portfolio")
+async def get_trading_portfolio() -> Dict[str, Any]:
+    """Get portfolio overview."""
+    try:
+        service = get_trading_service()
+        return service.get_portfolio_summary()
+    except Exception as e:
+        return {
+            "cash_balance": 0,
+            "portfolio_value": 0,
+            "available_cash": 0,
+            "positions_count": 0,
+            "realized_pnl": 0,
+            "unrealized_pnl": 0,
+            "total_pnl": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/api/trading/positions")
+async def get_trading_positions() -> Dict[str, Any]:
+    """Get active positions."""
+    try:
+        service = get_trading_service()
+        positions = service.get_positions_detail()
+        return {
+            "positions": positions,
+            "count": len(positions)
+        }
+    except Exception as e:
+        return {
+            "positions": [],
+            "count": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/api/trading/trades")
+async def get_trading_trades(
+    limit: int = Query(default=50, ge=1, le=500)
+) -> Dict[str, Any]:
+    """Get trade history."""
+    try:
+        service = get_trading_service()
+        trades = service.get_trade_history(limit=limit)
+        return {
+            "trades": trades,
+            "count": len(trades)
+        }
+    except Exception as e:
+        return {
+            "trades": [],
+            "count": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/api/trading/signals")
+async def get_trading_signals(
+    limit: int = Query(default=10, ge=1, le=50)
+) -> Dict[str, Any]:
+    """Get current trading signals."""
+    try:
+        service = get_trading_service()
+        signals = service.get_current_signals(limit=limit)
+        return {
+            "signals": signals,
+            "count": len(signals)
+        }
+    except Exception as e:
+        return {
+            "signals": [],
+            "count": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/api/trading/performance")
+async def get_trading_performance() -> Dict[str, Any]:
+    """Get trading performance metrics."""
+    try:
+        service = get_trading_service()
+        return service.get_performance()
+    except Exception as e:
+        return {
+            "roi": 0,
+            "total_return": 0,
+            "win_rate": 0,
+            "profit": 0,
+            "total_trades": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/api/trading/performance/by-strategy")
+async def get_trading_performance_by_strategy() -> Dict[str, Any]:
+    """Get performance metrics by strategy."""
+    try:
+        service = get_trading_service()
+        return service.get_performance_by_strategy()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/trading/models")
+async def get_trading_models() -> Dict[str, Any]:
+    """Get trading model versions/status."""
+    try:
+        service = get_trading_service()
+        models = service.get_model_status()
+        # Ensure we return a dict with strategy keys, not an error
+        if isinstance(models, dict) and 'error' not in models:
+            return models
+        # If service returned error or empty, return empty dict with strategies
+        return {
+            'momentum': {'available': False, 'path': '', 'version': None, 'cv_score': None, 'created_at': None},
+            'swing': {'available': False, 'path': '', 'version': None, 'cv_score': None, 'created_at': None},
+            'volatility': {'available': False, 'path': '', 'version': None, 'cv_score': None, 'created_at': None}
+        }
+    except Exception as e:
+        # Return empty models dict instead of error
+        return {
+            'momentum': {'available': False, 'path': '', 'version': None, 'cv_score': None, 'created_at': None},
+            'swing': {'available': False, 'path': '', 'version': None, 'cv_score': None, 'created_at': None},
+            'volatility': {'available': False, 'path': '', 'version': None, 'cv_score': None, 'created_at': None}
+        }
+
+
+class WatchlistUpdate(BaseModel):
+    stocks: Optional[List[str]] = None
+    crypto: Optional[List[str]] = None
+
+
+@app.put("/api/trading/watchlist")
+async def update_trading_watchlist(update: WatchlistUpdate) -> Dict[str, Any]:
+    """Update trading watchlist."""
+    import config
+    
+    # Load current config
+    config_path = Path(__file__).parent.parent / "config" / "config.json"
+    with open(config_path, 'r') as f:
+        main_config = json.load(f)
+    
+    # Get current watchlist
+    trading_config = main_config.get("trading", {})
+    watchlist = trading_config.get("watchlist", {"stocks": [], "crypto": []})
+    
+    # Update watchlist
+    if update.stocks is not None:
+        watchlist["stocks"] = update.stocks
+    if update.crypto is not None:
+        watchlist["crypto"] = update.crypto
+    
+    trading_config["watchlist"] = watchlist
+    main_config["trading"] = trading_config
+    
+    # Save config
+    with open(config_path, 'w') as f:
+        json.dump(main_config, f, indent=2)
+    
+    # Reload config
+    config.reload_config()
+    
+    return {
+        "success": True,
+        "message": "Watchlist updated",
+        "watchlist": watchlist
+    }
+
+
+@app.get("/api/trading/price-history/{symbol}")
+async def get_price_history(
+    symbol: str,
+    limit: int = Query(default=100, ge=1, le=1000)
+) -> Dict[str, Any]:
+    """Get price history for a symbol."""
+    try:
+        db = get_db()
+        df = db.get_price_history(symbol=symbol, limit=limit)
+        
+        if df.empty:
+            return {
+                "symbol": symbol,
+                "data": [],
+                "count": 0
+            }
+        
+        # Convert to list of dicts
+        data = df.to_dict('records')
+        
+        return {
+            "symbol": symbol,
+            "data": data,
+            "count": len(data)
+        }
+    except Exception as e:
+        return {
+            "symbol": symbol,
+            "data": [],
+            "count": 0,
+            "error": str(e)
+        }
+
+
+class ClosePositionRequest(BaseModel):
+    symbol: str
+
+
+@app.post("/api/trading/positions/close")
+async def close_trading_position(request: ClosePositionRequest) -> Dict[str, Any]:
+    """Manually close a position."""
+    try:
+        service = get_trading_service()
+        result = service.close_position_manual(request.symbol)
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+class InitPortfolioRequest(BaseModel):
+    starting_balance: Optional[float] = None
+
+
+@app.post("/api/trading/portfolio/initialize")
+async def initialize_trading_portfolio(request: InitPortfolioRequest = InitPortfolioRequest()) -> Dict[str, Any]:
+    """Initialize trading portfolio with starting balance."""
+    try:
+        service = get_trading_service()
+        service.initialize_portfolio(request.starting_balance)
+        return {
+            "success": True,
+            "message": "Portfolio initialized"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# =============================================================================
 # WEBSOCKET ENDPOINTS
 # =============================================================================
 
@@ -663,6 +989,73 @@ async def get_database_stats() -> Dict[str, Any]:
     return get_db().get_database_stats()
 
 
+@app.post("/api/database/reset")
+async def reset_database(preserve_models: bool = True) -> Dict[str, Any]:
+    """
+    Reset current environment database by clearing all data tables.
+    
+    Args:
+        preserve_models: If True, keep model_versions intact
+        
+    Returns:
+        Dict with reset results
+    """
+    try:
+        db = get_db()
+        result = db.reset_database(preserve_models=preserve_models)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/database/sync-prod-to-debug")
+async def sync_prod_to_debug() -> Dict[str, Any]:
+    """
+    Sync all data from production database to debug database (one-way).
+    
+    This copies all production data to debug for testing purposes.
+    Clears existing debug data first.
+    
+    Returns:
+        Dict with sync results
+    """
+    import config as config_module
+    from pathlib import Path
+    
+    # Check if we're in debug mode
+    if config_module.ENVIRONMENT != "debug":
+        raise HTTPException(
+            status_code=400,
+            detail="Sync is only available when in debug environment"
+        )
+    
+    # Get production database path
+    BASE_DIR = Path(__file__).parent.parent
+    production_db_path = str(BASE_DIR / "data" / "arbihawk.db")
+    
+    if not Path(production_db_path).exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Production database not found: {production_db_path}"
+        )
+    
+    try:
+        db = get_db()
+        result = db.sync_from_production(production_db_path)
+        
+        # Reset global instances to reload data
+        global _db, _scheduler, _bankroll, _metrics, _versioning
+        _db = None
+        _scheduler = None
+        _bankroll = None
+        _metrics = None
+        _versioning = None
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/database/backups")
 async def get_backups() -> Dict[str, Any]:
     """Get list of database backups."""
@@ -736,6 +1129,59 @@ async def get_backtest_results() -> Dict[str, Any]:
 # =============================================================================
 # CONFIG ENDPOINTS
 # =============================================================================
+
+@app.get("/api/config/environment")
+async def get_environment() -> Dict[str, Any]:
+    """Get current environment configuration."""
+    import config
+    return {
+        "environment": config.ENVIRONMENT,
+        "db_path": config.DB_PATH
+    }
+
+
+class EnvironmentUpdate(BaseModel):
+    environment: str  # 'debug' or 'production'
+
+
+@app.put("/api/config/environment")
+async def update_environment(env_update: EnvironmentUpdate) -> Dict[str, Any]:
+    """Update environment configuration."""
+    if env_update.environment not in ['debug', 'production']:
+        raise HTTPException(status_code=400, detail="Environment must be 'debug' or 'production'")
+    
+    import config as config_module
+    
+    # Load current config
+    config_path = Path(__file__).parent.parent / "config" / "config.json"
+    with open(config_path, 'r') as f:
+        main_config = json.load(f)
+    
+    # Update environment
+    main_config['environment'] = env_update.environment
+    
+    # Save config
+    with open(config_path, 'w') as f:
+        json.dump(main_config, f, indent=2)
+    
+    # Reload config module
+    config_module.reload_config()
+    
+    # Reset global instances to use new database
+    global _db, _scheduler, _bankroll, _metrics, _versioning, _backup
+    _db = None
+    _scheduler = None
+    _bankroll = None
+    _metrics = None
+    _versioning = None
+    _backup = None
+    
+    return {
+        "environment": config_module.ENVIRONMENT,
+        "db_path": config_module.DB_PATH,
+        "message": f"Environment switched to {env_update.environment}. Database connections reset."
+    }
+
 
 @app.get("/api/config/scraper-workers")
 async def get_scraper_workers_config() -> Dict[str, Any]:

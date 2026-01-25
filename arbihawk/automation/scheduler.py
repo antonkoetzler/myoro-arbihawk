@@ -5,10 +5,10 @@ Automation scheduler for data collection and model training.
 import time
 import subprocess
 import threading
-import logging
 import platform
 import json
 import sys
+import importlib.util
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
@@ -20,6 +20,8 @@ from data.ingestion import DataIngestionService
 from data.matchers import ScoreMatcher
 from data.settlement import BetSettlement
 from data.backup import DatabaseBackup
+from data.stock_ingestion import StockIngestionService
+from data.crypto_ingestion import CryptoIngestionService
 from monitoring.metrics import MetricsCollector
 from automation.betting import BettingService
 import config
@@ -57,6 +59,14 @@ class AutomationScheduler:
         self.backup = DatabaseBackup()
         self.metrics = MetricsCollector(self.db)
         self.betting_service = BettingService(self.db, log_callback=self._log)
+        
+        # Trading services (lazy initialization)
+        self._stock_service: Optional[StockIngestionService] = None
+        self._crypto_service: Optional[CryptoIngestionService] = None
+        
+        # Trading state
+        self._last_trading_collection = None
+        self._last_trading_collection_duration = None
         
         # Configuration
         self.collection_schedule = config.COLLECTION_SCHEDULE
@@ -135,12 +145,14 @@ class AutomationScheduler:
             "last_collection": self._last_collection,
             "last_training": self._last_training,
             "last_betting": getattr(self, '_last_betting', None),
+            "last_trading_collection": self._last_trading_collection,
             "log_count": len(self._logs),
             # Performance metrics
             "last_collection_duration_seconds": self._last_collection_duration,
             "last_training_duration_seconds": self._last_training_duration,
             "last_betting_duration_seconds": self._last_betting_duration,
             "last_full_run_duration_seconds": self._last_full_run_duration,
+            "last_trading_collection_duration_seconds": self._last_trading_collection_duration,
             "scraper_durations_seconds": self._scraper_durations.copy()
         }
     
@@ -278,7 +290,6 @@ class AutomationScheduler:
             self._log("info", "Matching scores to fixtures...")
             # Matching is done during score ingestion, but run batch matching for any unmatched
             try:
-                from data.matchers import ScoreMatcher
                 matcher = ScoreMatcher(self.db)
                 
                 # Get all unmatched scores (scores with fixture_ids not in fixtures)
@@ -402,13 +413,31 @@ print(json.dumps(league_ids))
     def _discover_flashscore_leagues(self) -> List[str]:
         """Discover all FlashScore league names from config."""
         try:
-            # Temporarily add scrapers src to path
+            # Use importlib to properly load the module from scrapers directory
+            league_config_path = self.scrapers_dir / "src" / "shared" / "league_config.py"
+            if not league_config_path.exists():
+                self._log("warning", f"League config not found at {league_config_path}")
+                return []
+            
+            spec = importlib.util.spec_from_file_location("shared.league_config", league_config_path)
+            if spec is None or spec.loader is None:
+                self._log("warning", "Failed to load league_config module spec")
+                return []
+            
+            league_config_module = importlib.util.module_from_spec(spec)
+            # Add scrapers src to path for any relative imports in the module
             scrapers_src = str(self.scrapers_dir / "src")
             if scrapers_src not in sys.path:
                 sys.path.insert(0, scrapers_src)
-            from shared.league_config import get_flashscore_leagues
-            leagues = get_flashscore_leagues()
-            return list(leagues.keys())
+            try:
+                spec.loader.exec_module(league_config_module)
+                get_flashscore_leagues = league_config_module.get_flashscore_leagues
+                leagues = get_flashscore_leagues()
+                return list(leagues.keys())
+            finally:
+                # Clean up path
+                if scrapers_src in sys.path:
+                    sys.path.remove(scrapers_src)
         except Exception as e:
             self._log("warning", f"Failed to discover FlashScore leagues: {e}")
             return []
@@ -812,7 +841,8 @@ print(json.dumps(league_ids))
             self._log("info", "Starting Betting phase...")
             self._log("info", "=" * 60)
             
-            betting_result = self.run_betting()
+            # For full run, require auto_bet_after_training to be enabled
+            betting_result = self.run_betting(require_auto_betting=True)
             if was_full_run:
                 self._current_task = "full_run"
             
@@ -979,12 +1009,169 @@ print(json.dumps(league_ids))
         thread.start()
         
         return {"success": True, "message": "Training started in background"}
-    def run_betting(self) -> Dict[str, Any]:
+    
+    # =========================================================================
+    # TRADING COLLECTION METHODS
+    # =========================================================================
+    
+    def _get_stock_service(self) -> StockIngestionService:
+        """Get or create stock ingestion service."""
+        if self._stock_service is None:
+            self._stock_service = StockIngestionService(
+                self.db,
+                log_callback=lambda level, msg: self._log(level, f"[TRADING] {msg}")
+            )
+        return self._stock_service
+    
+    def _get_crypto_service(self) -> CryptoIngestionService:
+        """Get or create crypto ingestion service."""
+        if self._crypto_service is None:
+            self._crypto_service = CryptoIngestionService(
+                self.db,
+                log_callback=lambda level, msg: self._log(level, f"[TRADING] {msg}")
+            )
+        return self._crypto_service
+    
+    def run_trading_collection(self) -> Dict[str, Any]:
+        """
+        Run trading data collection (stocks and crypto).
+        
+        Collects price data for all symbols in the trading watchlist.
+        Separate from betting collection.
+        
+        Returns:
+            Dict with collection results
+        """
+        self._current_task = "trading_collection"
+        self._stop_task_event.clear()
+        start_time = time.time()
+        
+        result = {
+            "success": False,
+            "stocks": {"collected": 0, "failed": 0, "total_prices": 0},
+            "crypto": {"collected": 0, "failed": 0, "total_prices": 0},
+            "errors": []
+        }
+        
+        try:
+            # Check if trading is enabled
+            trading_config = config.TRADING_CONFIG
+            if not trading_config.get("enabled", False):
+                self._log("info", "[TRADING] Trading is disabled in config")
+                result["success"] = True
+                result["skipped"] = True
+                result["reason"] = "Trading disabled"
+                return result
+            
+            self._log("info", "=" * 60)
+            self._log("info", "[TRADING] Starting trading data collection")
+            self._log("info", "=" * 60)
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "[TRADING] Collection stopped by user")
+                result["stopped"] = True
+                return result
+            
+            # Collect stocks
+            stock_watchlist = trading_config.get("watchlist", {}).get("stocks", [])
+            if stock_watchlist:
+                self._log("info", f"[TRADING] Collecting {len(stock_watchlist)} stocks...")
+                stock_service = self._get_stock_service()
+                
+                # Check API key status
+                if not stock_service.api_key:
+                    self._log("warning", "[TRADING] No Alpha Vantage API key - using yfinance fallback")
+                
+                stock_result = stock_service.collect_all()
+                result["stocks"]["collected"] = stock_result.get("collected", 0)
+                result["stocks"]["failed"] = stock_result.get("failed", 0)
+                result["stocks"]["total_prices"] = stock_result.get("total_prices", 0)
+                
+                if stock_result.get("errors"):
+                    result["errors"].extend([f"[STOCK] {e}" for e in stock_result["errors"]])
+                
+                self._log("success", f"[TRADING] Stocks: {result['stocks']['collected']}/{len(stock_watchlist)} collected, {result['stocks']['total_prices']} prices")
+            else:
+                self._log("info", "[TRADING] No stocks in watchlist")
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "[TRADING] Collection stopped by user after stocks")
+                result["stopped"] = True
+                return result
+            
+            # Collect crypto
+            crypto_watchlist = trading_config.get("watchlist", {}).get("crypto", [])
+            if crypto_watchlist:
+                self._log("info", f"[TRADING] Collecting {len(crypto_watchlist)} cryptos...")
+                crypto_service = self._get_crypto_service()
+                
+                crypto_result = crypto_service.collect_all()
+                result["crypto"]["collected"] = crypto_result.get("collected", 0)
+                result["crypto"]["failed"] = crypto_result.get("failed", 0)
+                result["crypto"]["total_prices"] = crypto_result.get("total_prices", 0)
+                
+                if crypto_result.get("errors"):
+                    result["errors"].extend([f"[CRYPTO] {e}" for e in crypto_result["errors"]])
+                
+                self._log("success", f"[TRADING] Crypto: {result['crypto']['collected']}/{len(crypto_watchlist)} collected, {result['crypto']['total_prices']} prices")
+            else:
+                self._log("info", "[TRADING] No crypto in watchlist")
+            
+            # Determine overall success
+            total_collected = result["stocks"]["collected"] + result["crypto"]["collected"]
+            total_failed = result["stocks"]["failed"] + result["crypto"]["failed"]
+            result["success"] = total_collected > 0 or (total_failed == 0)
+            
+            duration = time.time() - start_time
+            self._last_trading_collection_duration = duration
+            self._last_trading_collection = datetime.now().isoformat()
+            
+            self._log("info", "=" * 60)
+            self._log("info", f"[TRADING] Collection complete in {duration:.1f}s")
+            self._log("info", f"[TRADING] Total: {total_collected} symbols, {result['stocks']['total_prices'] + result['crypto']['total_prices']} prices")
+            self._log("info", "=" * 60)
+            
+        except Exception as e:
+            self._log("error", f"[TRADING] Collection failed: {e}")
+            result["errors"].append(str(e))
+        finally:
+            self._current_task = None
+        
+        return result
+    
+    def trigger_trading_collection(self) -> Dict[str, Any]:
+        """Manually trigger trading collection (for dashboard). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                self._stop_task_event.clear()
+                self.run_trading_collection()
+            except Exception as e:
+                self._log("error", f"[TRADING] Background collection failed: {e}")
+            finally:
+                if self._current_task == "trading_collection":
+                    self._current_task = None
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Trading collection started in background"}
+    
+    def run_betting(self, require_auto_betting: bool = False) -> Dict[str, Any]:
         """
         Run betting cycle.
         
-        Places bets using active models if fake money is enabled
-        and auto_bet_after_training is enabled.
+        Places bets using active models if fake money is enabled.
+        If require_auto_betting is True, also checks auto_bet_after_training setting.
+        
+        Args:
+            require_auto_betting: If True, only run if auto_bet_after_training is enabled.
+                                Used for automatic betting after training.
+                                If False (manual trigger), only checks fake money.
         
         Returns:
             Result dict with betting stats
@@ -1016,8 +1203,8 @@ print(json.dumps(league_ids))
                 result["reason"] = "Fake money disabled"
                 return result
             
-            # Check if auto-betting is enabled
-            if not config.AUTO_BET_AFTER_TRAINING:
+            # Check if auto-betting is enabled (only for automatic betting after training)
+            if require_auto_betting and not config.AUTO_BET_AFTER_TRAINING:
                 self._log("info", "Auto-betting after training is disabled, skipping betting")
                 result["success"] = True
                 result["skipped"] = True
@@ -1131,3 +1318,197 @@ print(json.dumps(league_ids))
         thread.start()
         
         return {"success": True, "message": "Backtest started in background"}
+    
+    # =========================================================================
+    # TRADING TRAINING AND CYCLE METHODS
+    # =========================================================================
+    
+    def run_trading_training(self) -> Dict[str, Any]:
+        """
+        Run trading model training cycle.
+        
+        Trains models for momentum, swing, and volatility strategies.
+        
+        Returns:
+            Result dict with training stats
+        """
+        self._current_task = "trading_training"
+        self._stop_task_event.clear()
+        start_time = time.time()
+        
+        result = {
+            "success": False,
+            "strategies_trained": 0,
+            "has_data": False,
+            "errors": []
+        }
+        
+        try:
+            # Check if trading is enabled
+            trading_config = config.TRADING_CONFIG
+            if not trading_config.get("enabled", False):
+                self._log("info", "[TRADING] Trading is disabled in config")
+                result["success"] = True
+                result["skipped"] = True
+                result["reason"] = "Trading disabled"
+                return result
+            
+            self._log("info", "=" * 60)
+            self._log("info", "[TRADING] Starting trading model training")
+            self._log("info", "=" * 60)
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "[TRADING] Training stopped by user")
+                result["stopped"] = True
+                return result
+            
+            # Run training
+            from train_trading import train_trading_models
+            success, metrics = train_trading_models(self.db, log_callback=self._log)
+            
+            result["success"] = success
+            result["metrics"] = metrics
+            result["strategies_trained"] = metrics.get("trained_count", 0)
+            result["has_data"] = metrics.get("has_data", False)
+            
+            if success:
+                if metrics.get("has_data"):
+                    self._log("success", f"[TRADING] Training completed: {result['strategies_trained']} strategies trained")
+                else:
+                    reason = metrics.get("no_data_reason", "No training data")
+                    self._log("warning", f"[TRADING] Training completed but no models trained: {reason}")
+            else:
+                errors = metrics.get("errors", [])
+                error_msg = "; ".join(errors) if errors else "Unknown error"
+                self._log("error", f"[TRADING] Training failed: {error_msg}")
+                result["errors"].extend(errors)
+            
+            duration = time.time() - start_time
+            result["duration_seconds"] = duration
+            self._log("info", f"[TRADING] Training cycle completed in {duration:.1f}s")
+            
+        except Exception as e:
+            self._log("error", f"[TRADING] Training failed: {e}")
+            result["errors"].append(str(e))
+        finally:
+            self._current_task = None
+        
+        return result
+    
+    def trigger_trading_training(self) -> Dict[str, Any]:
+        """Manually trigger trading training (for dashboard). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                self._stop_task_event.clear()
+                self.run_trading_training()
+            except Exception as e:
+                self._log("error", f"[TRADING] Background training failed: {e}")
+            finally:
+                if self._current_task == "trading_training":
+                    self._current_task = None
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Trading training started in background"}
+    
+    def run_trading_cycle(self) -> Dict[str, Any]:
+        """
+        Run trading cycle (signal generation + execution).
+        
+        Uses TradingService to find signals and execute trades.
+        
+        Returns:
+            Result dict with cycle stats
+        """
+        self._current_task = "trading_cycle"
+        self._stop_task_event.clear()
+        start_time = time.time()
+        
+        result = {
+            "success": False,
+            "signals_found": 0,
+            "trades_executed": 0,
+            "portfolio_value": 0,
+            "errors": []
+        }
+        
+        try:
+            # Check if trading is enabled
+            trading_config = config.TRADING_CONFIG
+            if not trading_config.get("enabled", False):
+                self._log("info", "[TRADING] Trading is disabled in config")
+                result["success"] = True
+                result["skipped"] = True
+                result["reason"] = "Trading disabled"
+                return result
+            
+            self._log("info", "=" * 60)
+            self._log("info", "[TRADING] Starting trading cycle")
+            self._log("info", "=" * 60)
+            
+            # Check if stopped
+            if self._stop_task_event.is_set():
+                self._log("info", "[TRADING] Cycle stopped by user")
+                result["stopped"] = True
+                return result
+            
+            # Initialize trading service
+            from trading.service import TradingService
+            trading_service = TradingService(self.db, log_callback=self._log)
+            
+            # Run trading cycle
+            cycle_result = trading_service.run_trading_cycle(
+                limit_per_strategy=5,
+                max_executions=3
+            )
+            
+            result["success"] = cycle_result.get("success", False)
+            result["signals_found"] = cycle_result.get("signals_found", 0)
+            result["trades_executed"] = cycle_result.get("signals_executed", 0)
+            result["portfolio_value"] = cycle_result.get("portfolio_value", 0)
+            result["pnl"] = cycle_result.get("pnl", {})
+            
+            if cycle_result.get("error"):
+                result["errors"].append(cycle_result["error"])
+            
+            duration = time.time() - start_time
+            result["duration_seconds"] = duration
+            
+            if result["success"]:
+                self._log("success", f"[TRADING] Cycle complete: {result['trades_executed']} trades, Portfolio: ${result['portfolio_value']:.2f}")
+            else:
+                error_msg = "; ".join(result["errors"]) if result["errors"] else "Unknown error"
+                self._log("error", f"[TRADING] Cycle failed: {error_msg}")
+            
+        except Exception as e:
+            self._log("error", f"[TRADING] Cycle failed: {e}")
+            result["errors"].append(str(e))
+        finally:
+            self._current_task = None
+        
+        return result
+    
+    def trigger_trading_cycle(self) -> Dict[str, Any]:
+        """Manually trigger trading cycle (for dashboard). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                self._stop_task_event.clear()
+                self.run_trading_cycle()
+            except Exception as e:
+                self._log("error", f"[TRADING] Background cycle failed: {e}")
+            finally:
+                if self._current_task == "trading_cycle":
+                    self._current_task = None
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Trading cycle started in background"}

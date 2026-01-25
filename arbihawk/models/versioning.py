@@ -47,7 +47,7 @@ class ModelVersionManager:
         self.rollback_evaluation_bets = versioning_config.get("rollback_evaluation_bets", 50)
         self.max_versions_to_keep = versioning_config.get("max_versions_to_keep", 10)
     
-    def save_version(self, market: str, model_path: str,
+    def save_version(self, domain: str, market: str, model_path: str,
                      training_samples: int, cv_score: float,
                      performance_metrics: Optional[Dict] = None,
                      activate: bool = True) -> int:
@@ -55,7 +55,8 @@ class ModelVersionManager:
         Save a new model version.
         
         Args:
-            market: Market type (1x2, over_under, btts)
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type (e.g., '1x2', 'momentum', 'swing')
             model_path: Path to saved model file
             training_samples: Number of training samples
             cv_score: Cross-validation score
@@ -66,6 +67,7 @@ class ModelVersionManager:
             Version ID
         """
         version_id = self.db.insert_model_version(
+            domain=domain,
             market=market,
             model_path=model_path,
             training_samples=training_samples,
@@ -74,38 +76,41 @@ class ModelVersionManager:
         )
         
         if activate:
-            self.db.set_active_model(version_id, market)
+            self.db.set_active_model(version_id, domain, market)
         
         # Cleanup old versions
-        self._cleanup_old_versions(market)
+        self._cleanup_old_versions(domain, market)
         
         return version_id
     
-    def get_active_version(self, market: str) -> Optional[Dict[str, Any]]:
+    def get_active_version(self, domain: str, market: str) -> Optional[Dict[str, Any]]:
         """
-        Get active model version for a market.
+        Get active model version for a domain and market.
         
         Args:
-            market: Market type
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type
             
         Returns:
             Active version info or None
         """
-        return self.db.get_active_model(market)
+        return self.db.get_active_model(domain, market)
     
-    def get_all_versions(self, market: Optional[str] = None,
+    def get_all_versions(self, domain: Optional[str] = None,
+                         market: Optional[str] = None,
                          limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get all model versions.
         
         Args:
-            market: Filter by market (optional)
+            domain: Filter by domain (optional, None = all domains)
+            market: Filter by market (optional, None = all markets)
             limit: Maximum versions to return
             
         Returns:
             List of version info dicts
         """
-        df = self.db.get_model_versions(market=market, limit=limit)
+        df = self.db.get_model_versions(domain=domain, market=market, limit=limit)
         return df.to_dict('records') if len(df) > 0 else []
     
     def rollback_to_version(self, version_id: int) -> bool:
@@ -127,8 +132,9 @@ class ModelVersionManager:
         # Create backup before rollback
         self.backup.create_backup("pre_rollback")
         
-        # Activate the version
-        self.db.set_active_model(version_id, version['market'])
+        # Activate the version (preserve domain from version)
+        domain = version.get('domain', 'betting')
+        self.db.set_active_model(version_id, domain, version['market'])
         
         return True
     
@@ -181,7 +187,7 @@ class ModelVersionManager:
         
         return comparison
     
-    def check_should_rollback(self, market: str) -> Optional[int]:
+    def check_should_rollback(self, domain: str, market: str) -> Optional[int]:
         """
         Check if current model should be rolled back.
         
@@ -189,7 +195,8 @@ class ModelVersionManager:
         is underperforming compared to the previous version.
         
         Args:
-            market: Market type
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type
             
         Returns:
             Version ID to rollback to, or None if no rollback needed
@@ -197,7 +204,7 @@ class ModelVersionManager:
         if not self.auto_rollback_enabled:
             return None
         
-        versions = self.get_all_versions(market=market, limit=5)
+        versions = self.get_all_versions(domain=domain, market=market, limit=5)
         
         if len(versions) < 2:
             return None
@@ -205,19 +212,20 @@ class ModelVersionManager:
         current_version = versions[0]
         previous_version = versions[1]
         
-        # Get betting stats
-        stats = self.db.get_bankroll_stats()
-        
-        # Only check if we have enough settled bets
-        if stats.get('settled_bets', 0) < self.rollback_evaluation_bets:
-            return None
-        
-        # Get ROI
-        current_roi = stats.get('roi', 0) * 100  # Convert to percentage
-        
-        # Check threshold
-        if current_roi < self.rollback_threshold:
-            return previous_version.get('version_id')
+        # Get betting stats (only applicable for betting domain)
+        if domain == 'betting':
+            stats = self.db.get_bankroll_stats()
+            
+            # Only check if we have enough settled bets
+            if stats.get('settled_bets', 0) < self.rollback_evaluation_bets:
+                return None
+            
+            # Get ROI
+            current_roi = stats.get('roi', 0) * 100  # Convert to percentage
+            
+            # Check threshold
+            if current_roi < self.rollback_threshold:
+                return previous_version.get('version_id')
         
         return None
     
@@ -234,19 +242,20 @@ class ModelVersionManager:
         # For now, metrics are stored at creation time
         pass
     
-    def get_best_version(self, market: str,
+    def get_best_version(self, domain: str, market: str,
                          metric: str = "cv_score") -> Optional[Dict[str, Any]]:
         """
-        Get best performing version for a market.
+        Get best performing version for a domain and market.
         
         Args:
-            market: Market type
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type
             metric: Metric to optimize ("cv_score" or from performance_metrics)
             
         Returns:
             Best version info or None
         """
-        versions = self.get_all_versions(market=market)
+        versions = self.get_all_versions(domain=domain, market=market)
         
         if not versions:
             return None
@@ -269,12 +278,13 @@ class ModelVersionManager:
         
         return best
     
-    def _cleanup_old_versions(self, market: str) -> int:
+    def _cleanup_old_versions(self, domain: str, market: str) -> int:
         """
         Remove old versions beyond max_versions_to_keep.
         
         Args:
-            market: Market type
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type
             
         Returns:
             Number of versions removed

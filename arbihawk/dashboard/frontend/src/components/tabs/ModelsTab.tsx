@@ -141,6 +141,74 @@ export function ModelsTab({ api }: ModelsTabProps) {
                               Trained: {model.trained_at?.split('T')[0]}
                             </span>
                           </div>
+                          {model.brier_score !== undefined && (
+                            <div className='mt-3 space-y-1 border-t border-slate-600 pt-3'>
+                              <div className='flex items-center justify-between text-xs'>
+                                <span className='text-slate-400'>Calibration Metrics:</span>
+                                <Tooltip text='Brier Score: Measures probability accuracy (lower is better, perfect = 0.0). ECE (Expected Calibration Error): Measures how well predicted probabilities match actual frequencies (lower is better). Calibration ensures probabilities are reliable for betting decisions.'>
+                                  <HelpCircle
+                                    size={12}
+                                    className='cursor-help text-slate-500'
+                                  />
+                                </Tooltip>
+                              </div>
+                              <div className='grid grid-cols-2 gap-2 text-xs'>
+                                <div>
+                                  <span className='text-slate-400'>Brier Score:</span>
+                                  <span className='ml-2 font-mono text-slate-300'>
+                                    {model.brier_score.toFixed(4)}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className='text-slate-400'>ECE:</span>
+                                  <span className='ml-2 font-mono text-slate-300'>
+                                    {model.ece?.toFixed(4) ?? '-'}
+                                  </span>
+                                </div>
+                                {model.calibration_improvement && (
+                                  <div className='col-span-2 text-xs text-slate-500'>
+                                    Improvement: Brier{' '}
+                                    {model.calibration_improvement.brier_score &&
+                                      model.calibration_improvement.brier_score > 0 && (
+                                        <span className='text-emerald-400'>+</span>
+                                      )}
+                                    {model.calibration_improvement.brier_score?.toFixed(4) ?? '0.0000'}, ECE{' '}
+                                    {model.calibration_improvement.ece &&
+                                      model.calibration_improvement.ece > 0 && (
+                                        <span className='text-emerald-400'>+</span>
+                                      )}
+                                    {model.calibration_improvement.ece?.toFixed(4) ?? '0.0000'}
+                                  </div>
+                                )}
+                                {model.performance_metrics?.hyperparameters && (
+                                  <div className='col-span-2 mt-2 border-t border-slate-700/50 pt-2'>
+                                    <div className='text-xs font-medium text-slate-400 mb-1'>
+                                      Hyperparameters (Tuned):
+                                    </div>
+                                    <div className='text-xs text-slate-500 space-y-0.5'>
+                                      {Object.entries(
+                                        model.performance_metrics.hyperparameters as Record<string, unknown>
+                                      ).map(([key, value]) => (
+                                        <div key={key} className='flex justify-between'>
+                                          <span className='text-slate-500'>{key}:</span>
+                                          <span className='font-mono text-slate-400'>
+                                            {typeof value === 'number' ? value.toFixed(4) : String(value)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {model.performance_metrics?.tuning_metrics?.best_brier_score && (
+                                      <div className='mt-1 text-xs text-slate-500'>
+                                        Tuning Brier: {(
+                                          model.performance_metrics.tuning_metrics.best_brier_score as number
+                                        ).toFixed(4)}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

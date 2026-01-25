@@ -118,7 +118,7 @@ class BettingService:
                 self.log_callback("info", f"Processing {market} market...")
             
             # Get active model version
-            active_version = self.version_manager.get_active_version(market)
+            active_version = self.version_manager.get_active_version(domain='betting', market=market)
             if not active_version:
                 result["error"] = f"No active model found for {market}"
                 if self.log_callback:

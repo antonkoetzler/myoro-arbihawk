@@ -11,6 +11,7 @@ export const TAB_QUERIES: Record<string, readonly string[]> = {
   system: ['health', 'errors', 'dbStats', 'status'] as const,
   bets: ['bankroll', 'bets'] as const,
   betting: ['bets', 'bankroll'] as const,
+  trading: ['trading-status', 'trading-portfolio', 'trading-positions', 'trading-signals', 'trading-performance', 'trading-models'] as const,
   automation: ['status'] as const,
   models: ['models'] as const,
   logs: [] as const, // No polling needed - WebSocket handles it

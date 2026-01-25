@@ -8,8 +8,9 @@ The versioning system tracks model versions and enables rollback.
 
 1. Each training run creates a new model version
 2. Versions are stored with metadata (samples, CV score, etc.)
-3. Only one version is active per market
+3. Only one version is active per domain and market
 4. Can rollback to previous versions if needed
+5. Supports multiple domains (betting, trading) - see [Domain Extension Guide](domain-extension.md)
 
 ## Configuration
 
@@ -43,6 +44,7 @@ manager = ModelVersionManager()
 
 # Save a new version
 version_id = manager.save_version(
+    domain="betting",  # 'betting' or 'trading'
     market="1x2",
     model_path="models/saved/1x2_model.pkl",
     training_samples=1000,
@@ -50,7 +52,7 @@ version_id = manager.save_version(
 )
 
 # Get active version
-active = manager.get_active_version("1x2")
+active = manager.get_active_version(domain="betting", market="1x2")
 
 # Rollback
 manager.rollback_to_version(previous_version_id)

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, Square, RefreshCw, TrendingUp, Settings } from 'lucide-react';
+import { Play, Square, RefreshCw, TrendingUp, Settings, Zap, Wallet } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
 import type { createApi } from '../../api/api';
 import type {
@@ -16,8 +16,11 @@ interface AutomationTabProps {
   onSwitchToLogs?: () => void;
 }
 
+type Domain = 'betting' | 'trading';
+
 /**
  * Automation tab component - displays automation controls and configuration
+ * Unified interface for both betting and trading automation
  */
 export function AutomationTab({
   api,
@@ -25,6 +28,7 @@ export function AutomationTab({
   onSwitchToLogs,
 }: AutomationTabProps) {
   const queryClient = useQueryClient();
+  const [selectedDomain, setSelectedDomain] = useState<Domain>('betting');
 
   const { data: status } = useQuery<AutomationStatus>({
     queryKey: ['status'],
@@ -44,6 +48,13 @@ export function AutomationTab({
     queryKey: ['scraperWorkersConfig'],
     queryFn: api.getScraperWorkersConfig,
     refetchInterval: false,
+    retry: false,
+  });
+
+  const { data: tradingStatus } = useQuery({
+    queryKey: ['trading-status'],
+    queryFn: () => api.getTradingStatus(),
+    refetchInterval: 30000,
     retry: false,
   });
 
@@ -144,6 +155,53 @@ export function AutomationTab({
     },
   });
 
+  // Trading automation mutations
+  const tradingCollectionMutation = useMutation({
+    mutationFn: api.triggerTradingCollection,
+    onSuccess: () => {
+      if (onSwitchToLogs) onSwitchToLogs();
+      void queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to trigger trading collection', 'error');
+    },
+  });
+
+  const tradingTrainingMutation = useMutation({
+    mutationFn: api.triggerTradingTraining,
+    onSuccess: () => {
+      if (onSwitchToLogs) onSwitchToLogs();
+      void queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to trigger trading training', 'error');
+    },
+  });
+
+  const tradingCycleMutation = useMutation({
+    mutationFn: api.triggerTradingCycle,
+    onSuccess: () => {
+      if (onSwitchToLogs) onSwitchToLogs();
+      void queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+      void queryClient.invalidateQueries({ queryKey: ['trading-portfolio'] });
+      void queryClient.invalidateQueries({ queryKey: ['trading-positions'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to trigger trading cycle', 'error');
+    },
+  });
+
+  const initializePortfolioMutation = useMutation({
+    mutationFn: api.initializeTradingPortfolio,
+    onSuccess: () => {
+      showToast('Portfolio initialized', 'success');
+      void queryClient.invalidateQueries({ queryKey: ['trading-portfolio'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to initialize portfolio', 'error');
+    },
+  });
+
   const isTaskRunning = !!status?.current_task;
   const taskButtonTooltip = isTaskRunning
     ? 'You can only run one task at a time'
@@ -157,138 +215,272 @@ export function AutomationTab({
       <div className='card'>
         <div className='mb-4 flex items-center justify-between'>
           <h3 className='text-lg font-semibold'>Automation Control</h3>
-          <div
-            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm ${status?.running ? 'bg-sky-500/20 text-sky-400' : 'bg-slate-700 text-slate-400'}`}
-          >
-            {status?.running ? 'Running' : 'Stopped'}
+          <div className='flex items-center gap-3'>
+            {/* Domain Selector */}
+            <div className='flex items-center gap-1 rounded-lg bg-slate-800/50 p-1'>
+              <button
+                onClick={() => setSelectedDomain('betting')}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                  selectedDomain === 'betting'
+                    ? 'bg-sky-500/20 text-sky-400'
+                    : 'text-slate-400 hover:text-slate-300'
+                }`}
+                type='button'
+              >
+                Betting
+              </button>
+              <button
+                onClick={() => setSelectedDomain('trading')}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                  selectedDomain === 'trading'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'text-slate-400 hover:text-slate-300'
+                }`}
+                type='button'
+              >
+                Trading
+              </button>
+            </div>
+            <div
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm ${
+                selectedDomain === 'betting'
+                  ? status?.running
+                    ? 'bg-sky-500/20 text-sky-400'
+                    : 'bg-slate-700 text-slate-400'
+                  : tradingStatus?.enabled
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-slate-700 text-slate-400'
+              }`}
+            >
+              {selectedDomain === 'betting'
+                ? status?.running
+                  ? 'Running'
+                  : 'Stopped'
+                : tradingStatus?.enabled
+                  ? 'Enabled'
+                  : 'Disabled'}
+            </div>
           </div>
         </div>
 
-        <div className='mb-6 grid grid-cols-1 gap-4 md:grid-cols-4'>
-          <div className='rounded-lg bg-slate-700/30 p-4'>
-            <p className='text-sm text-slate-400'>Current Task</p>
-            <p className='font-medium'>{status?.current_task ?? 'None'}</p>
-          </div>
-          <div className='rounded-lg bg-slate-700/30 p-4'>
-            <p className='text-sm text-slate-400'>Last Collection</p>
-            <p className='font-mono text-sm font-medium'>
-              {status?.last_collection
-                ? new Date(status.last_collection).toLocaleString()
-                : 'Never'}
-            </p>
-            {status?.last_collection_duration_seconds != null && (
-              <p className='mt-1 text-xs text-slate-500'>
-                Duration:{' '}
-                {status.last_collection_duration_seconds >= 60
-                  ? `${(status.last_collection_duration_seconds / 60).toFixed(1)} min`
-                  : `${status.last_collection_duration_seconds.toFixed(1)}s`}
+        {/* Status metrics - domain-specific */}
+        {selectedDomain === 'betting' ? (
+          <div className='mb-6 grid grid-cols-1 gap-4 md:grid-cols-4'>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>Current Task</p>
+              <p className='font-medium'>{status?.current_task ?? 'None'}</p>
+            </div>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>Last Collection</p>
+              <p className='font-mono text-sm font-medium'>
+                {status?.last_collection
+                  ? new Date(status.last_collection).toLocaleString()
+                  : 'Never'}
               </p>
-            )}
-          </div>
-          <div className='rounded-lg bg-slate-700/30 p-4'>
-            <p className='text-sm text-slate-400'>Last Training</p>
-            <p className='font-mono text-sm font-medium'>
-              {status?.last_training
-                ? new Date(status.last_training).toLocaleString()
-                : 'Never'}
-            </p>
-            {status?.last_training_duration_seconds != null && (
-              <p className='mt-1 text-xs text-slate-500'>
-                Duration: {status.last_training_duration_seconds.toFixed(1)}s
+              {status?.last_collection_duration_seconds != null && (
+                <p className='mt-1 text-xs text-slate-500'>
+                  Duration:{' '}
+                  {status.last_collection_duration_seconds >= 60
+                    ? `${(status.last_collection_duration_seconds / 60).toFixed(1)} min`
+                    : `${status.last_collection_duration_seconds.toFixed(1)}s`}
+                </p>
+              )}
+            </div>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>Last Training</p>
+              <p className='font-mono text-sm font-medium'>
+                {status?.last_training
+                  ? new Date(status.last_training).toLocaleString()
+                  : 'Never'}
               </p>
-            )}
-          </div>
-          <div className='rounded-lg bg-slate-700/30 p-4'>
-            <p className='text-sm text-slate-400'>Last Betting</p>
-            <p className='font-mono text-sm font-medium'>
-              {status?.last_betting
-                ? new Date(status.last_betting).toLocaleString()
-                : 'Never'}
-            </p>
-            {status?.last_betting_duration_seconds != null && (
-              <p className='mt-1 text-xs text-slate-500'>
-                Duration: {status.last_betting_duration_seconds.toFixed(1)}s
+              {status?.last_training_duration_seconds != null && (
+                <p className='mt-1 text-xs text-slate-500'>
+                  Duration: {status.last_training_duration_seconds.toFixed(1)}s
+                </p>
+              )}
+            </div>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>Last Betting</p>
+              <p className='font-mono text-sm font-medium'>
+                {status?.last_betting
+                  ? new Date(status.last_betting).toLocaleString()
+                  : 'Never'}
               </p>
-            )}
+              {status?.last_betting_duration_seconds != null && (
+                <p className='mt-1 text-xs text-slate-500'>
+                  Duration: {status.last_betting_duration_seconds.toFixed(1)}s
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className='mb-6 grid grid-cols-1 gap-4 md:grid-cols-3'>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>Last Data Collection</p>
+              <p className='font-mono text-sm font-medium'>
+                {tradingStatus?.last_collection
+                  ? new Date(tradingStatus.last_collection).toLocaleString()
+                  : 'Never'}
+              </p>
+              {tradingStatus?.last_collection_duration_seconds != null && (
+                <p className='mt-1 text-xs text-slate-500'>
+                  Duration:{' '}
+                  {tradingStatus.last_collection_duration_seconds >= 60
+                    ? `${(tradingStatus.last_collection_duration_seconds / 60).toFixed(1)} min`
+                    : `${tradingStatus.last_collection_duration_seconds.toFixed(1)}s`}
+                </p>
+              )}
+            </div>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>API Keys</p>
+              <div className='mt-1 flex gap-2 text-xs'>
+                <span className={`${tradingStatus?.api_keys_configured?.alpha_vantage ? 'text-emerald-400' : 'text-red-400'}`}>
+                  Stocks
+                </span>
+                <span className='text-slate-500'>/</span>
+                <span className={`${tradingStatus?.api_keys_configured?.coingecko ? 'text-emerald-400' : 'text-red-400'}`}>
+                  Crypto
+                </span>
+              </div>
+            </div>
+            <div className='rounded-lg bg-slate-800/50 p-4'>
+              <p className='text-sm text-slate-400'>Watchlist</p>
+              <p className='font-mono text-sm font-medium'>
+                {tradingStatus?.watchlist
+                  ? `${tradingStatus.watchlist.stocks?.length ?? 0} stocks, ${tradingStatus.watchlist.crypto?.length ?? 0} crypto`
+                  : 'Not configured'}
+              </p>
+            </div>
+          </div>
+        )}
 
-        <div className='flex flex-wrap gap-3'>
-          <Tooltip text={taskButtonTooltip}>
-            <button
-              onClick={triggerCollectionWithWorkers}
-              disabled={triggerMutation.isPending || isTaskRunning}
-              className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-              type='button'
+        {/* Domain-specific controls */}
+        {selectedDomain === 'betting' ? (
+          <div className='flex flex-wrap gap-3'>
+            <Tooltip text={taskButtonTooltip}>
+              <button
+                onClick={triggerCollectionWithWorkers}
+                disabled={triggerMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Play size={16} /> Run Collection
+              </button>
+            </Tooltip>
+            <Tooltip text={taskButtonTooltip}>
+              <button
+                onClick={() => {
+                  if (onSwitchToLogs) onSwitchToLogs();
+                  triggerMutation.mutate('train');
+                }}
+                disabled={triggerMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <RefreshCw size={16} /> Run Training
+              </button>
+            </Tooltip>
+            <Tooltip text={taskButtonTooltip}>
+              <button
+                onClick={() => {
+                  if (onSwitchToLogs) onSwitchToLogs();
+                  triggerMutation.mutate('betting');
+                }}
+                disabled={triggerMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <TrendingUp size={16} /> Place Bets
+              </button>
+            </Tooltip>
+            <Tooltip
+              text={
+                taskButtonTooltip ||
+                'Run collection, training, and betting in sequence'
+              }
             >
-              <Play size={16} /> Run Collection
-            </button>
-          </Tooltip>
-          <Tooltip text={taskButtonTooltip}>
-            <button
-              onClick={() => {
-                if (onSwitchToLogs) onSwitchToLogs();
-                triggerMutation.mutate('train');
-              }}
-              disabled={triggerMutation.isPending || isTaskRunning}
-              className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-              type='button'
-            >
-              <RefreshCw size={16} /> Run Training
-            </button>
-          </Tooltip>
-          <Tooltip text={taskButtonTooltip}>
-            <button
-              onClick={() => {
-                if (onSwitchToLogs) onSwitchToLogs();
-                triggerMutation.mutate('betting');
-              }}
-              disabled={triggerMutation.isPending || isTaskRunning}
-              className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-              type='button'
-            >
-              <TrendingUp size={16} /> Place Bets
-            </button>
-          </Tooltip>
-          <Tooltip
-            text={
-              taskButtonTooltip ||
-              'Run collection, training, and betting in sequence'
-            }
-          >
-            <button
-              onClick={triggerFullRunWithWorkers}
-              disabled={triggerMutation.isPending || isTaskRunning}
-              className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-              type='button'
-            >
-              <Play size={16} /> Full Run
-            </button>
-          </Tooltip>
-          <Tooltip text='Start daemon mode to run full cycles continuously'>
-            <button
-              onClick={() => {
-                if (onSwitchToLogs) onSwitchToLogs();
-                startDaemonMutation.mutate();
-              }}
-              disabled={startDaemonMutation.isPending || status?.running}
-              className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-              type='button'
-            >
-              <Play size={16} /> Run Daemon
-            </button>
-          </Tooltip>
-          <Tooltip text={stopButtonTooltip}>
-            <button
-              onClick={() => stopMutation.mutate()}
-              disabled={!isTaskRunning || stopMutation.isPending}
-              className='btn-danger ml-auto flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-              type='button'
-            >
-              <Square size={16} /> Stop
-            </button>
-          </Tooltip>
-        </div>
+              <button
+                onClick={triggerFullRunWithWorkers}
+                disabled={triggerMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Play size={16} /> Full Run
+              </button>
+            </Tooltip>
+            <Tooltip text='Start daemon mode to run full cycles continuously'>
+              <button
+                onClick={() => {
+                  if (onSwitchToLogs) onSwitchToLogs();
+                  startDaemonMutation.mutate();
+                }}
+                disabled={startDaemonMutation.isPending || status?.running}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Play size={16} /> Run Daemon
+              </button>
+            </Tooltip>
+            <Tooltip text={stopButtonTooltip}>
+              <button
+                onClick={() => stopMutation.mutate()}
+                disabled={!isTaskRunning || stopMutation.isPending}
+                className='btn-danger ml-auto flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Square size={16} /> Stop
+              </button>
+            </Tooltip>
+          </div>
+        ) : (
+          <div className='flex flex-wrap gap-3'>
+            <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+              <button
+                onClick={() => tradingCollectionMutation.mutate()}
+                disabled={!tradingStatus?.enabled || tradingCollectionMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <RefreshCw size={16} /> Collect Data
+              </button>
+            </Tooltip>
+            <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+              <button
+                onClick={() => tradingTrainingMutation.mutate()}
+                disabled={!tradingStatus?.enabled || tradingTrainingMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Zap size={16} /> Train Models
+              </button>
+            </Tooltip>
+            <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+              <button
+                onClick={() => tradingCycleMutation.mutate()}
+                disabled={!tradingStatus?.enabled || tradingCycleMutation.isPending || isTaskRunning}
+                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Play size={16} /> Run Trading Cycle
+              </button>
+            </Tooltip>
+            <Tooltip text='Initialize portfolio with starting balance'>
+              <button
+                onClick={() => initializePortfolioMutation.mutate()}
+                disabled={initializePortfolioMutation.isPending}
+                className='btn-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                type='button'
+              >
+                <Wallet size={16} /> Initialize Portfolio
+              </button>
+            </Tooltip>
+            {!tradingStatus?.enabled && (
+              <p className='text-sm text-slate-500 mt-2'>
+                Enable trading in config.json to use trading automation
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Scraper Workers Configuration */}

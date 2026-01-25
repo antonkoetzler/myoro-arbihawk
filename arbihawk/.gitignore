@@ -10,5 +10,5 @@ env/
 *.csv
 *.json
 data/matches/
-data/arbihawk.db
+data/*.db
 data/backups/*.db.backup

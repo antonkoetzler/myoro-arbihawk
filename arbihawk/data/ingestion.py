@@ -563,6 +563,17 @@ class DataIngestionService:
         # Calculate checksum
         checksum = hashlib.md5(json_str.encode()).hexdigest()
         
+        # Check if this data was already ingested (duplicate prevention)
+        if self.db.checksum_exists(source, checksum):
+            # Return success but with 0 records to indicate it was skipped
+            return {
+                "success": True,
+                "records": 0,
+                "checksum": checksum,
+                "skipped": True,
+                "message": "Data already ingested (duplicate checksum)"
+            }
+        
         # Parse and validate
         data, validation = self.validator.validate_json_string(json_str, source)
         
@@ -712,6 +723,17 @@ class DataIngestionService:
                 # No match found - store with temp ID for later matching
                 match_date = match.get("match_date") or match_time.split('T')[0] if 'T' in match_time else match_time
                 final_fixture_id = f"{source}_{home_team}_{away_team}_{match_date}".replace(" ", "_")
+                
+                # Create minimal fixture record to prevent orphaned data
+                # This allows foreign key integrity and enables later matching
+                fixture_data = {
+                    "fixture_id": final_fixture_id,
+                    "home_team_name": home_team,
+                    "away_team_name": away_team,
+                    "start_time": match_time,
+                    "status": "finished"
+                }
+                self.db.insert_fixture(fixture_data)
             
             # Insert score
             score_data = {

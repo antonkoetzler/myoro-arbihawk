@@ -1,6 +1,8 @@
 """
 Backtesting engine for temporal validation of betting models.
 Implements walk-forward validation to simulate historical betting performance.
+
+Optimized to use vectorized feature computation and data caching.
 """
 
 import pandas as pd
@@ -53,6 +55,8 @@ class BacktestEngine:
        - Track results when scores are available
     3. Aggregate performance metrics
     
+    Uses cached feature computation for efficiency.
+    
     Example:
         engine = BacktestEngine()
         result = engine.run_backtest(
@@ -79,6 +83,9 @@ class BacktestEngine:
         self.ev_threshold = ev_threshold or config.EV_THRESHOLD
         self.starting_balance = starting_balance or config.FAKE_MONEY_CONFIG.get("starting_balance", 10000)
         self.feature_engineer = FeatureEngineer(self.db)
+        
+        # Pre-load data into cache
+        self.feature_engineer._load_data()
     
     def _split_temporal_periods(self, train_start: str, test_start: str, 
                                 test_end: str, period_days: int = 30) -> List[Tuple[str, str]]:
@@ -112,6 +119,8 @@ class BacktestEngine:
         """
         Get training data up to a specific date.
         
+        Uses cached data from FeatureEngineer for efficiency.
+        
         Args:
             before_date: Only use matches before this date
             market: Market type (1x2, over_under, btts)
@@ -119,38 +128,35 @@ class BacktestEngine:
         Returns:
             Tuple of (features, labels)
         """
-        # Get fixtures with scores before the date
-        fixtures = self.db.get_fixtures(to_date=before_date)
-        scores = self.db.get_scores()
+        # Use cached completed matches from feature engineer
+        self.feature_engineer._load_data()
+        completed = self.feature_engineer._completed_cache
         
-        if len(fixtures) == 0 or len(scores) == 0:
+        if completed is None or len(completed) == 0:
             return pd.DataFrame(), pd.Series()
-        
-        # Merge to get completed matches
-        completed = fixtures.merge(scores, on='fixture_id', how='inner')
         
         # Filter by date - handle different date formats and timezones
-        if len(completed) > 0:
-            # Convert to datetime for proper comparison (handle timezones)
-            completed['start_time_dt'] = pd.to_datetime(completed['start_time'], errors='coerce', utc=True)
-            before_dt = pd.to_datetime(before_date, errors='coerce', utc=True)
-            
-            # Drop rows where conversion failed
-            completed = completed.dropna(subset=['start_time_dt'])
-            
-            if before_dt is not pd.NaT:
-                completed = completed[completed['start_time_dt'] < before_dt]
-            
-            completed = completed.drop(columns=['start_time_dt'], errors='ignore')
+        completed_filtered = completed.copy()
+        completed_filtered['start_time_dt'] = pd.to_datetime(completed_filtered['start_time'], errors='coerce', utc=True)
+        before_dt = pd.to_datetime(before_date, errors='coerce', utc=True)
         
-        if len(completed) == 0:
+        # Drop rows where conversion failed
+        completed_filtered = completed_filtered.dropna(subset=['start_time_dt'])
+        
+        if before_dt is not pd.NaT:
+            completed_filtered = completed_filtered[completed_filtered['start_time_dt'] < before_dt]
+        
+        if len(completed_filtered) == 0:
             return pd.DataFrame(), pd.Series()
         
+        # Get features from cache (this uses the pre-computed features)
         features_list = []
         labels_list = []
+        valid_indices = []
         
-        for _, row in completed.iterrows():
+        for idx, row in completed_filtered.iterrows():
             try:
+                # Use cached create_features - much faster than before
                 features = self.feature_engineer.create_features(row['fixture_id'])
                 features_list.append(features)
                 
@@ -174,6 +180,7 @@ class BacktestEngine:
                     label = 'home_win' if home_score > away_score else 'away_win'
                 
                 labels_list.append(label)
+                valid_indices.append(idx)
             except Exception as e:
                 logger.warning(f"Error creating features for fixture {row['fixture_id']}: {e}")
                 continue
@@ -188,15 +195,28 @@ class BacktestEngine:
     
     def _get_test_fixtures(self, period_start: str, period_end: str) -> pd.DataFrame:
         """Get fixtures in test period that have scores (completed matches)."""
-        fixtures = self.db.get_fixtures(from_date=period_start, to_date=period_end)
-        scores = self.db.get_scores()
+        # Use cached data
+        self.feature_engineer._load_data()
+        completed = self.feature_engineer._completed_cache
         
-        if len(fixtures) == 0 or len(scores) == 0:
+        if completed is None or len(completed) == 0:
             return pd.DataFrame()
         
-        # Only test on completed matches
-        completed = fixtures.merge(scores, on='fixture_id', how='inner')
-        return completed
+        # Filter by date range
+        completed_filtered = completed.copy()
+        completed_filtered['start_time_dt'] = pd.to_datetime(completed_filtered['start_time'], errors='coerce', utc=True)
+        start_dt = pd.to_datetime(period_start, errors='coerce', utc=True)
+        end_dt = pd.to_datetime(period_end, errors='coerce', utc=True)
+        
+        completed_filtered = completed_filtered.dropna(subset=['start_time_dt'])
+        
+        if start_dt is not pd.NaT and end_dt is not pd.NaT:
+            completed_filtered = completed_filtered[
+                (completed_filtered['start_time_dt'] >= start_dt) &
+                (completed_filtered['start_time_dt'] < end_dt)
+            ]
+        
+        return completed_filtered.drop(columns=['start_time_dt'], errors='ignore')
     
     def _get_odds_at_time(self, fixture_id: str, prediction_time: str, 
                           market: str) -> pd.DataFrame:
@@ -211,8 +231,13 @@ class BacktestEngine:
         Returns:
             DataFrame of odds available at that time
         """
-        # Get fixture to know match start time
-        fixtures = self.db.get_fixtures()
+        # Use cached fixtures
+        self.feature_engineer._load_data()
+        fixtures = self.feature_engineer._fixtures_cache
+        
+        if fixtures is None or len(fixtures) == 0:
+            return pd.DataFrame()
+        
         fixture = fixtures[fixtures['fixture_id'] == fixture_id]
         
         if len(fixture) == 0:
@@ -248,6 +273,8 @@ class BacktestEngine:
         """
         Simulate betting on test period fixtures.
         
+        Uses cached feature computation for efficiency.
+        
         Args:
             predictor: Trained predictor model
             test_fixtures: Fixtures to bet on
@@ -263,7 +290,7 @@ class BacktestEngine:
             fixture_id = fixture['fixture_id']
             
             try:
-                # Get features (respects time ordering via FeatureEngineer)
+                # Get features from cache (respects time ordering via FeatureEngineer)
                 features = self.feature_engineer.create_features(fixture_id)
                 features_df = pd.DataFrame([features])
                 
@@ -306,7 +333,14 @@ class BacktestEngine:
                     
                     if prob_col and prob_col in probabilities.columns:
                         probability = probabilities[prob_col].iloc[0]
-                        ev = (probability * odds_value) - 1
+                        
+                        # Get margin for this market and calculate margin-adjusted EV
+                        market_margin = config.BOOKMAKER_MARGINS.get(market, 0.05)  # Default 5% if market not found
+                        # Calculate adjusted implied probability
+                        implied_prob = 1.0 / odds_value
+                        adjusted_implied_prob = implied_prob / (1.0 + market_margin)
+                        # EV = (model_prob - adjusted_implied_prob) × odds
+                        ev = (probability - adjusted_implied_prob) * odds_value
                         
                         if ev >= self.ev_threshold:
                             # Determine actual outcome
@@ -459,6 +493,13 @@ class BacktestEngine:
         result = BacktestResult()
         all_bets = []
         
+        # Pre-load data into cache for efficiency
+        self.feature_engineer._load_data()
+        
+        # Pre-compute features for all fixtures (this populates the features cache)
+        logger.info("Pre-computing features for all fixtures...")
+        self.feature_engineer._compute_all_features_vectorized()
+        
         # Split test period into windows
         periods = self._split_temporal_periods(train_start, test_start, test_end, period_days)
         
@@ -471,7 +512,7 @@ class BacktestEngine:
             
             for market in markets:
                 try:
-                    # Get training data up to period start
+                    # Get training data up to period start (uses cached features)
                     X_train, y_train = self._get_training_data(period_start, market)
                     
                     if len(X_train) < min_training_samples:
@@ -488,7 +529,7 @@ class BacktestEngine:
                     if len(test_fixtures) == 0:
                         continue
                     
-                    # Simulate betting
+                    # Simulate betting (uses cached features)
                     bets = self._simulate_betting(predictor, test_fixtures, period_start, market)
                     
                     # Add market info to bets

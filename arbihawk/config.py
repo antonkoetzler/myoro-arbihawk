@@ -36,9 +36,33 @@ def _get_automation_config() -> Dict[str, Any]:
 _config = _get_config()
 _automation_config = _get_automation_config()
 
-# Main configuration
-DB_PATH = str(BASE_DIR / _config.get("db_path", "data/arbihawk.db"))
+# Environment configuration
+ENVIRONMENT = _config.get("environment", "debug")  # 'debug' or 'production'
+
+# Main configuration - DB path depends on environment
+# Environment-based path takes priority
+if ENVIRONMENT == "debug":
+    default_db_path = "data/arbihawk_debug.db"
+else:
+    default_db_path = "data/arbihawk.db"
+
+# Use explicit db_path only if environment is not set, otherwise use environment-based path
+if "environment" in _config:
+    DB_PATH = str(BASE_DIR / default_db_path)
+elif "db_path" in _config:
+    DB_PATH = str(BASE_DIR / _config["db_path"])
+else:
+    DB_PATH = str(BASE_DIR / default_db_path)
 EV_THRESHOLD = float(_config.get("ev_threshold", 0.07))
+
+# Bookmaker margin configuration (defaults based on industry research)
+# Margins represent the overround/vig that bookmakers add to odds
+# Typical ranges: 1x2 (4-6%), over_under (5-8%), btts (6-8%)
+BOOKMAKER_MARGINS = _config.get("bookmaker_margins", {
+    "1x2": 0.05,  # 5% margin for match result markets
+    "over_under": 0.06,  # 6% margin for over/under markets
+    "btts": 0.07  # 7% margin for both teams to score markets
+})
 
 # Automation configuration
 COLLECTION_SCHEDULE = _automation_config.get("collection_schedule", "0 */6 * * *")
@@ -85,20 +109,73 @@ BACKUP_CONFIG = _automation_config.get("backup", {
     "compress": False
 })
 
+# Hyperparameter tuning configuration
+HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("hyperparameter_tuning", {
+    "enabled": True,
+    "search_space": "medium",  # 'small', 'medium', or 'large'
+    "min_samples": 300
+})
+
+# Trading configuration (stocks/crypto)
+TRADING_CONFIG = _config.get("trading", {
+    "enabled": False,
+    "watchlist": {
+        "stocks": ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM", "V", "JNJ"],
+        "crypto": ["BTC", "ETH", "BNB", "SOL", "ADA"]
+    },
+    "api_keys": {
+        "alpha_vantage": "",
+        "coingecko": ""
+    },
+    "update_frequency": {
+        "stocks": "daily",
+        "crypto": "hourly"
+    },
+    "rate_limiting": {
+        "alpha_vantage_calls_per_min": 5,
+        "alpha_vantage_calls_per_day": 25,
+        "coingecko_calls_per_min": 30
+    },
+    "scraping_fallback": {
+        "enabled": True,
+        "retry_api_after_hours": 24
+    },
+    "historical_backfill_days": 365
+})
+
 
 def reload_config():
     """Reload configuration from files."""
     global _config, _automation_config
-    global DB_PATH, EV_THRESHOLD, COLLECTION_SCHEDULE, TRAINING_SCHEDULE
+    global ENVIRONMENT, DB_PATH, EV_THRESHOLD, COLLECTION_SCHEDULE, TRAINING_SCHEDULE
     global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, SCRAPER_ARGS, SCRAPER_WORKERS
     global FAKE_MONEY_CONFIG, MODEL_VERSIONING_CONFIG, METRICS_CONFIG, BACKUP_CONFIG
-    global AUTO_BET_AFTER_TRAINING
+    global AUTO_BET_AFTER_TRAINING, BOOKMAKER_MARGINS, HYPERPARAMETER_TUNING_CONFIG
+    global TRADING_CONFIG
     
     _config = _get_config()
     _automation_config = _get_automation_config()
     
-    DB_PATH = str(BASE_DIR / _config.get("db_path", "data/arbihawk.db"))
+    ENVIRONMENT = _config.get("environment", "debug")
+    
+    if ENVIRONMENT == "debug":
+        default_db_path = "data/arbihawk_debug.db"
+    else:
+        default_db_path = "data/arbihawk.db"
+    
+    # Environment-based path takes priority
+    if "environment" in _config:
+        DB_PATH = str(BASE_DIR / default_db_path)
+    elif "db_path" in _config:
+        DB_PATH = str(BASE_DIR / _config["db_path"])
+    else:
+        DB_PATH = str(BASE_DIR / default_db_path)
     EV_THRESHOLD = float(_config.get("ev_threshold", 0.07))
+    BOOKMAKER_MARGINS = _config.get("bookmaker_margins", {
+        "1x2": 0.05,
+        "over_under": 0.06,
+        "btts": 0.07
+    })
     COLLECTION_SCHEDULE = _automation_config.get("collection_schedule", "0 */6 * * *")
     TRAINING_SCHEDULE = _automation_config.get("training_schedule", "0 2 * * *")
     INCREMENTAL_MODE = _automation_config.get("incremental_mode", True)
@@ -122,3 +199,33 @@ def reload_config():
     MODEL_VERSIONING_CONFIG = _automation_config.get("model_versioning", {})
     METRICS_CONFIG = _automation_config.get("metrics", {})
     BACKUP_CONFIG = _automation_config.get("backup", {})
+    HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("hyperparameter_tuning", {
+        "enabled": True,
+        "search_space": "medium",
+        "min_samples": 300
+    })
+    TRADING_CONFIG = _config.get("trading", {
+        "enabled": False,
+        "watchlist": {
+            "stocks": ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM", "V", "JNJ"],
+            "crypto": ["BTC", "ETH", "BNB", "SOL", "ADA"]
+        },
+        "api_keys": {
+            "alpha_vantage": "",
+            "coingecko": ""
+        },
+        "update_frequency": {
+            "stocks": "daily",
+            "crypto": "hourly"
+        },
+        "rate_limiting": {
+            "alpha_vantage_calls_per_min": 5,
+            "alpha_vantage_calls_per_day": 25,
+            "coingecko_calls_per_min": 30
+        },
+        "scraping_fallback": {
+            "enabled": True,
+            "retry_api_after_hours": 24
+        },
+        "historical_backfill_days": 365
+    })

@@ -20,16 +20,16 @@ export function StatCard({
 
   return (
     <div className='stat-card'>
-      <div className='flex items-start justify-between'>
-        <div>
+      <div className='flex items-center justify-between'>
+        <div className='flex-1'>
           <p className='mb-1 text-sm text-slate-400'>{title}</p>
           <p className='text-2xl font-bold'>{value}</p>
           {subtitle && (
             <p className='mt-1 text-xs text-slate-500'>{subtitle}</p>
           )}
         </div>
-        <div className={`rounded-lg p-4 ${getTrendClasses()}`}>
-          <Icon size={20} />
+        <div className={`rounded-lg p-3 ml-4 flex-shrink-0 ${getTrendClasses()}`}>
+          <Icon size={24} />
         </div>
       </div>
     </div>

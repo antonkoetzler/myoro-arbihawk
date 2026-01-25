@@ -38,9 +38,16 @@ Models are trained for three betting markets:
 
 Each model uses **XGBoost** with:
 - Cross-validation for evaluation
-- Automatic hyperparameter tuning
+- **Probability calibration** (isotonic regression or Platt scaling)
+- Calibration metrics tracking (Brier Score, Expected Calibration Error)
 - Class balancing for imbalanced datasets
 - Model persistence to disk
+
+**Calibration** ensures predicted probabilities are well-calibrated, which is critical for profitable betting. The system automatically:
+- Splits data into training (80%) and calibration (20%) sets
+- Trains model on training set
+- Calibrates probabilities on separate calibration set
+- Tracks calibration quality metrics
 
 ### 4. Model Storage
 
@@ -86,6 +93,10 @@ Training metrics include:
 - **Sample count**: Number of training examples
 - **Feature count**: Number of features used
 - **Label distribution**: Class balance in training data
+- **Calibration metrics** (if calibration enabled):
+  - **Brier Score**: Probability accuracy (lower is better)
+  - **Expected Calibration Error (ECE)**: Calibration quality (lower is better)
+  - **Calibration improvement**: Difference between uncalibrated and calibrated metrics
 
 These metrics are stored with each model version and can be viewed in the dashboard.
 

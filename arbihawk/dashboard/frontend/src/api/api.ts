@@ -11,6 +11,7 @@ import type {
   FakeMoneyConfig,
   ScraperWorkersConfig,
   TriggerAutomationParams,
+  EnvironmentConfig,
 } from '../types';
 
 /**
@@ -112,6 +113,22 @@ export const createApi = (
         .then(handleResponse<DbStats>)
         .catch((err) => handleError(err, 'Failed to fetch database stats')),
 
+    resetDatabase: (preserveModels = true): Promise<{
+      success: boolean;
+      backup_path: string;
+      records_deleted: Record<string, number>;
+      total_deleted: number;
+      preserved_models: boolean;
+      model_versions_kept: number;
+    }> =>
+      fetch('/api/database/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preserve_models: preserveModels }),
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to reset database')),
+
     triggerAutomation: (params: TriggerAutomationParams | string): Promise<unknown> => {
       // Support both old (string) and new (object) API for backwards compatibility
       const body = typeof params === 'string' ? { mode: params } : params;
@@ -186,5 +203,199 @@ export const createApi = (
         .catch((err) =>
           handleError(err, 'Failed to update scraper workers config')
         ),
+
+    getEnvironment: (): Promise<EnvironmentConfig> =>
+      fetch('/api/config/environment')
+        .then(handleResponse<EnvironmentConfig>)
+        .catch((err) => handleError(err, 'Failed to fetch environment config')),
+
+    updateEnvironment: (
+      environment: 'debug' | 'production'
+    ): Promise<EnvironmentConfig> =>
+      fetch('/api/config/environment', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ environment }),
+      })
+        .then(handleResponse<EnvironmentConfig>)
+        .catch((err) => handleError(err, 'Failed to update environment')),
+
+    syncProdToDebug: (): Promise<{
+      success: boolean;
+      records_copied: Record<string, number>;
+      total_copied: number;
+      source_db: string;
+      target_db: string;
+    }> =>
+      fetch('/api/database/sync-prod-to-debug', {
+        method: 'POST',
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to sync production to debug')),
+
+    // Trading API
+    triggerTradingCollection: (): Promise<{ success: boolean; message?: string; error?: string }> =>
+      fetch('/api/trading/collect', {
+        method: 'POST',
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to trigger trading collection')),
+
+    getTradingStatus: (): Promise<{
+      enabled: boolean;
+      last_collection: string | null;
+      last_collection_duration_seconds: number | null;
+      watchlist: { stocks?: string[]; crypto?: string[] };
+      api_keys_configured: { alpha_vantage: boolean; coingecko: boolean };
+    }> =>
+      fetch('/api/trading/status')
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading status')),
+
+    triggerTradingTraining: (): Promise<{ success: boolean; message?: string; error?: string }> =>
+      fetch('/api/trading/train', { method: 'POST' })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to trigger trading training')),
+
+    triggerTradingCycle: (): Promise<{ success: boolean; message?: string; error?: string }> =>
+      fetch('/api/trading/cycle', { method: 'POST' })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to trigger trading cycle')),
+
+    getTradingPortfolio: (): Promise<{
+      cash_balance: number;
+      portfolio_value: number;
+      available_cash: number;
+      positions_count: number;
+      realized_pnl: number;
+      unrealized_pnl: number;
+      total_pnl: number;
+      error?: string;
+    }> =>
+      fetch('/api/trading/portfolio')
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading portfolio')),
+
+    getTradingPositions: (): Promise<{
+      positions: Array<{
+        id: number;
+        symbol: string;
+        asset_type: string;
+        strategy: string;
+        direction: string;
+        quantity: number;
+        entry_price: number;
+        current_price: number;
+        unrealized_pnl: number;
+        pnl_pct: number;
+        stop_loss?: number;
+        take_profit?: number;
+        opened_at: string;
+      }>;
+      count: number;
+      error?: string;
+    }> =>
+      fetch('/api/trading/positions')
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading positions')),
+
+    getTradingTrades: (limit = 50): Promise<{
+      trades: Array<{
+        id: number;
+        symbol: string;
+        asset_type: string;
+        strategy: string;
+        direction: string;
+        order_type: string;
+        quantity: number;
+        price: number;
+        pnl?: number;
+        timestamp: string;
+      }>;
+      count: number;
+      error?: string;
+    }> =>
+      fetch(`/api/trading/trades?limit=${limit}`)
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading trades')),
+
+    getTradingSignals: (limit = 10): Promise<{
+      signals: Array<{
+        symbol: string;
+        asset_type: string;
+        strategy: string;
+        direction: string;
+        confidence: number;
+        entry_price: number;
+        stop_loss: number;
+        take_profit: number;
+        risk_reward: number;
+        expected_value: number;
+        timestamp: string;
+      }>;
+      count: number;
+      error?: string;
+    }> =>
+      fetch(`/api/trading/signals?limit=${limit}`)
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading signals')),
+
+    getTradingPerformance: (): Promise<{
+      roi: number;
+      total_return: number;
+      win_rate: number;
+      profit: number;
+      total_trades: number;
+      winning_trades: number;
+      losing_trades: number;
+      avg_win: number;
+      avg_loss: number;
+      sharpe_ratio: number;
+      max_drawdown: number;
+      current_value: number;
+      starting_balance: number;
+      error?: string;
+    }> =>
+      fetch('/api/trading/performance')
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading performance')),
+
+    getTradingModels: (): Promise<Record<string, {
+      available: boolean;
+      path: string;
+      version?: string;
+      cv_score?: number;
+      created_at?: string;
+    }>> =>
+      fetch('/api/trading/models')
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to fetch trading models')),
+
+    closePosition: (symbol: string): Promise<{ success: boolean; error?: string }> =>
+      fetch('/api/trading/positions/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol }),
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to close position')),
+
+    initializeTradingPortfolio: (startingBalance?: number): Promise<{ success: boolean; error?: string }> =>
+      fetch('/api/trading/portfolio/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ starting_balance: startingBalance }),
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to initialize portfolio')),
+
+    updateTradingWatchlist: (data: { stocks?: string[], crypto?: string[] }): Promise<{ success: boolean; watchlist: any }> =>
+      fetch('/api/trading/watchlist', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to update watchlist')),
   };
 };

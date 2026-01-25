@@ -229,7 +229,19 @@ export function BettingTab({ api }: BettingTabProps) {
   const formatDate = (dateString?: string) => {
     if (!dateString) return { date: '-', time: '' };
     try {
-      const date = new Date(dateString);
+      // Parse date - if no timezone info, assume UTC (SQLite stores UTC)
+      let date: Date;
+      // Check if date string has timezone indicator (Z, +HH:MM, or -HH:MM)
+      const hasTimezone = /[Z+-]\d{2}:?\d{2}$/.test(dateString) || dateString.endsWith('Z');
+      if (hasTimezone) {
+        // Has timezone info, parse normally (will convert to local timezone)
+        date = new Date(dateString);
+      } else {
+        // No timezone info, assume UTC and append 'Z' to force UTC parsing
+        date = new Date(dateString + 'Z');
+      }
+      
+      // Use local timezone methods (getDate, getHours, etc. automatically use local timezone)
       const day = String(date.getDate()).padStart(2, '0');
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const year = date.getFullYear();

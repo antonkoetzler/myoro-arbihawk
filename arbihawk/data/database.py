@@ -15,7 +15,7 @@ import config
 class Database:
     """SQLite database manager for betting data."""
     
-    SCHEMA_VERSION = 4  # Increment when schema changes
+    SCHEMA_VERSION = 6  # Increment when schema changes
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or config.DB_PATH
@@ -152,6 +152,7 @@ class Database:
                     settled_at TEXT,
                     result TEXT DEFAULT 'pending',
                     payout REAL DEFAULT 0,
+                    model_market TEXT,
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(fixture_id)
                 )
             """)
@@ -160,6 +161,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS model_versions (
                     version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    domain TEXT NOT NULL DEFAULT 'betting',
                     market TEXT NOT NULL,
                     model_path TEXT NOT NULL,
                     trained_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -192,8 +194,11 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_settlements_fixture_market ON bet_settlements(fixture_id, market_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_fixture ON bet_history(fixture_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_result ON bet_history(result)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_model_market ON bet_history(model_market)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_market ON model_versions(market)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_active ON model_versions(market, is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_domain_market ON model_versions(domain, market)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_domain_active ON model_versions(domain, market, is_active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_metrics_type_time ON metrics(metric_type, timestamp)")
             
             # Record schema version
@@ -214,12 +219,20 @@ class Database:
         # Migration 3: Add model_market column to bet_history
         if current_version < 3:
             try:
-                # Check if column already exists
-                cursor.execute("PRAGMA table_info(bet_history)")
-                columns = [row[1] for row in cursor.fetchall()]
-                if 'model_market' not in columns:
-                    cursor.execute("ALTER TABLE bet_history ADD COLUMN model_market TEXT")
-                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_model_market ON bet_history(model_market)")
+                # Check if table exists first
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='bet_history'
+                """)
+                table_exists = cursor.fetchone() is not None
+                
+                if table_exists:
+                    # Check if column already exists
+                    cursor.execute("PRAGMA table_info(bet_history)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    if 'model_market' not in columns:
+                        cursor.execute("ALTER TABLE bet_history ADD COLUMN model_market TEXT")
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bet_history_model_market ON bet_history(model_market)")
             except sqlite3.OperationalError as e:
                 # Column might already exist, ignore
                 if "duplicate column name" not in str(e).lower():
@@ -228,16 +241,215 @@ class Database:
         # Migration 4: Add dismissed column to ingestion_metadata
         # Always check if column exists, regardless of schema version (handles cases where version was set but migration didn't run)
         try:
-            cursor.execute("PRAGMA table_info(ingestion_metadata)")
-            columns = [row[1] for row in cursor.fetchall()]
-            if 'dismissed' not in columns:
-                cursor.execute("ALTER TABLE ingestion_metadata ADD COLUMN dismissed INTEGER DEFAULT 0")
-                # Only update version if we actually added the column
-                if current_version < 4:
-                    cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (4,))
+            # Check if table exists first
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='ingestion_metadata'
+            """)
+            table_exists = cursor.fetchone() is not None
+            
+            if table_exists:
+                cursor.execute("PRAGMA table_info(ingestion_metadata)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if 'dismissed' not in columns:
+                    cursor.execute("ALTER TABLE ingestion_metadata ADD COLUMN dismissed INTEGER DEFAULT 0")
+                    # Only update version if we actually added the column
+                    if current_version < 4:
+                        cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (4,))
         except sqlite3.OperationalError as e:
             if "duplicate column name" not in str(e).lower():
                 raise
+        
+        # Migration 5: Add domain column to model_versions
+        if current_version < 5:
+            try:
+                # Check if table exists first
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='model_versions'
+                """)
+                table_exists = cursor.fetchone() is not None
+                
+                if table_exists:
+                    # Check if column already exists
+                    cursor.execute("PRAGMA table_info(model_versions)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    if 'domain' not in columns:
+                        # Add domain column with default 'betting' for existing rows
+                        cursor.execute("ALTER TABLE model_versions ADD COLUMN domain TEXT DEFAULT 'betting'")
+                        # Update existing rows to have 'betting' domain
+                        cursor.execute("UPDATE model_versions SET domain = 'betting' WHERE domain IS NULL")
+                        # Add composite indexes for performance
+                        cursor.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_model_versions_domain_market 
+                            ON model_versions(domain, market)
+                        """)
+                        cursor.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_model_versions_domain_active 
+                            ON model_versions(domain, market, is_active)
+                        """)
+                        # Update schema version
+                        cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (5,))
+            except sqlite3.OperationalError as e:
+                # Column might already exist, ignore
+                if "duplicate column name" not in str(e).lower():
+                    raise
+        
+        # Migration 6: Add trading tables (stocks, crypto, price_history, indicators, trades, positions, portfolio)
+        if current_version < 6:
+            try:
+                # Check if tables already exist
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stocks'")
+                stocks_exists = cursor.fetchone() is not None
+                
+                if not stocks_exists:
+                    # Create stocks table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS stocks (
+                            symbol TEXT PRIMARY KEY,
+                            name TEXT,
+                            sector TEXT,
+                            industry TEXT,
+                            market_cap REAL,
+                            exchange TEXT,
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Create crypto table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS crypto (
+                            symbol TEXT PRIMARY KEY,
+                            name TEXT,
+                            market_cap REAL,
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Create price_history table (unified for stocks and crypto)
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS price_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            symbol TEXT NOT NULL,
+                            asset_type TEXT NOT NULL,
+                            timestamp TEXT NOT NULL,
+                            open REAL,
+                            high REAL,
+                            low REAL,
+                            close REAL,
+                            volume REAL,
+                            UNIQUE(symbol, asset_type, timestamp)
+                        )
+                    """)
+                    
+                    # Create indicators table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS indicators (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            symbol TEXT NOT NULL,
+                            asset_type TEXT NOT NULL,
+                            timestamp TEXT NOT NULL,
+                            rsi REAL,
+                            macd REAL,
+                            macd_signal REAL,
+                            macd_histogram REAL,
+                            sma_20 REAL,
+                            sma_50 REAL,
+                            sma_200 REAL,
+                            bollinger_upper REAL,
+                            bollinger_lower REAL,
+                            bollinger_middle REAL,
+                            atr REAL,
+                            volume_sma REAL,
+                            UNIQUE(symbol, asset_type, timestamp)
+                        )
+                    """)
+                    
+                    # Create trades table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS trades (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            symbol TEXT NOT NULL,
+                            asset_type TEXT NOT NULL,
+                            trade_type TEXT NOT NULL,
+                            order_type TEXT NOT NULL,
+                            quantity REAL NOT NULL,
+                            price REAL NOT NULL,
+                            total_cost REAL NOT NULL,
+                            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                            strategy TEXT,
+                            model_confidence REAL,
+                            notes TEXT
+                        )
+                    """)
+                    
+                    # Create positions table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS positions (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            symbol TEXT NOT NULL,
+                            asset_type TEXT NOT NULL,
+                            quantity REAL NOT NULL,
+                            avg_entry_price REAL NOT NULL,
+                            current_price REAL,
+                            unrealized_pnl REAL,
+                            entry_timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                            strategy TEXT,
+                            stop_loss REAL,
+                            take_profit REAL,
+                            UNIQUE(symbol, asset_type)
+                        )
+                    """)
+                    
+                    # Create portfolio table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS portfolio (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                            cash_balance REAL NOT NULL,
+                            total_position_value REAL,
+                            total_portfolio_value REAL,
+                            unrealized_pnl REAL,
+                            realized_pnl REAL
+                        )
+                    """)
+                    
+                    # Create indexes for performance
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_price_history_symbol_time 
+                        ON price_history(symbol, asset_type, timestamp)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_price_history_asset_time 
+                        ON price_history(asset_type, timestamp)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_indicators_symbol_time 
+                        ON indicators(symbol, asset_type, timestamp)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_trades_symbol_time 
+                        ON trades(symbol, asset_type, timestamp)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_trades_strategy 
+                        ON trades(strategy)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_positions_symbol 
+                        ON positions(symbol, asset_type)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_portfolio_timestamp 
+                        ON portfolio(timestamp)
+                    """)
+                    
+                    # Update schema version
+                    cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (6,))
+            except sqlite3.OperationalError as e:
+                # Table might already exist, ignore
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    raise
         
         # Update schema version after migrations (if not already at target version)
         if current_version < self.SCHEMA_VERSION:
@@ -545,6 +757,25 @@ class Database:
                     WHERE id = ?
                 """, (error_id,))
     
+    def checksum_exists(self, source: str, checksum: str) -> bool:
+        """Check if a checksum already exists for a source.
+        
+        Args:
+            source: Source identifier
+            checksum: MD5 checksum to check
+            
+        Returns:
+            True if checksum exists, False otherwise
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM ingestion_metadata
+                WHERE source = ? AND checksum = ?
+            """, (source, checksum))
+            result = cursor.fetchone()
+            return result[0] > 0 if result else False
+    
     def dismiss_log_error(self, error_key: str) -> None:
         """Record a dismissed log error."""
         with self._get_connection() as conn:
@@ -759,10 +990,23 @@ class Database:
     # MODEL VERSION OPERATIONS
     # =========================================================================
     
-    def insert_model_version(self, market: str, model_path: str,
+    def insert_model_version(self, domain: str, market: str, model_path: str,
                               training_samples: int, cv_score: float,
                               performance_metrics: Optional[Dict] = None) -> int:
-        """Insert a new model version."""
+        """
+        Insert a new model version.
+        
+        Args:
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type (e.g., '1x2', 'momentum', 'swing')
+            model_path: Path to saved model file
+            training_samples: Number of training samples
+            cv_score: Cross-validation score
+            performance_metrics: Additional metrics
+            
+        Returns:
+            Version ID
+        """
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
@@ -770,46 +1014,78 @@ class Database:
             
             cursor.execute("""
                 INSERT INTO model_versions 
-                (market, model_path, training_samples, cv_score, is_active, performance_metrics)
-                VALUES (?, ?, ?, ?, 0, ?)
-            """, (market, model_path, training_samples, cv_score, metrics_json))
+                (domain, market, model_path, training_samples, cv_score, is_active, performance_metrics)
+                VALUES (?, ?, ?, ?, ?, 0, ?)
+            """, (domain, market, model_path, training_samples, cv_score, metrics_json))
             
             return cursor.lastrowid
     
-    def set_active_model(self, version_id: int, market: str) -> None:
-        """Set a model version as active (deactivates others for same market)."""
+    def set_active_model(self, version_id: int, domain: str, market: str) -> None:
+        """
+        Set a model version as active (deactivates others for same domain and market).
+        
+        Args:
+            version_id: Version ID to activate
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type
+        """
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # Deactivate all models for this market
+            # Deactivate all models for this domain and market
             cursor.execute("""
-                UPDATE model_versions SET is_active = 0 WHERE market = ?
-            """, (market,))
+                UPDATE model_versions SET is_active = 0 
+                WHERE domain = ? AND market = ?
+            """, (domain, market))
             
             # Activate the specified version
             cursor.execute("""
                 UPDATE model_versions SET is_active = 1 WHERE version_id = ?
             """, (version_id,))
     
-    def get_active_model(self, market: str) -> Optional[Dict[str, Any]]:
-        """Get the active model for a market."""
+    def get_active_model(self, domain: str, market: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the active model for a domain and market.
+        
+        Args:
+            domain: Domain type ('betting' or 'trading')
+            market: Market/strategy type
+            
+        Returns:
+            Active model version dict or None
+        """
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM model_versions 
-                WHERE market = ? AND is_active = 1
-            """, (market,))
+                WHERE domain = ? AND market = ? AND is_active = 1
+            """, (domain, market))
             row = cursor.fetchone()
             if row:
                 return dict(row)
             return None
     
-    def get_model_versions(self, market: Optional[str] = None,
+    def get_model_versions(self, domain: Optional[str] = None,
+                           market: Optional[str] = None,
                            limit: int = 100) -> pd.DataFrame:
-        """Get model versions."""
+        """
+        Get model versions.
+        
+        Args:
+            domain: Filter by domain (optional, None = all domains)
+            market: Filter by market (optional, None = all markets)
+            limit: Maximum versions to return
+            
+        Returns:
+            DataFrame of model versions
+        """
         with self._get_connection() as conn:
             query = "SELECT * FROM model_versions WHERE 1=1"
             params = []
+            
+            if domain:
+                query += " AND domain = ?"
+                params.append(domain)
             
             if market:
                 query += " AND market = ?"
@@ -881,6 +1157,749 @@ class Database:
             return cursor.rowcount
     
     # =========================================================================
+    # STOCK OPERATIONS
+    # =========================================================================
+    
+    def insert_stock(self, stock_data: Dict[str, Any]) -> None:
+        """
+        Insert or update a stock.
+        
+        Args:
+            stock_data: Dict with symbol, name, sector, industry, market_cap, exchange
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO stocks 
+                (symbol, name, sector, industry, market_cap, exchange)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                stock_data['symbol'],
+                stock_data.get('name'),
+                stock_data.get('sector'),
+                stock_data.get('industry'),
+                stock_data.get('market_cap'),
+                stock_data.get('exchange')
+            ))
+    
+    def get_stocks(self, symbol: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get stocks.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            
+        Returns:
+            DataFrame of stocks
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM stocks WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # CRYPTO OPERATIONS
+    # =========================================================================
+    
+    def insert_crypto(self, crypto_data: Dict[str, Any]) -> None:
+        """
+        Insert or update a crypto.
+        
+        Args:
+            crypto_data: Dict with symbol, name, market_cap
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO crypto 
+                (symbol, name, market_cap)
+                VALUES (?, ?, ?)
+            """, (
+                crypto_data['symbol'],
+                crypto_data.get('name'),
+                crypto_data.get('market_cap')
+            ))
+    
+    def get_crypto(self, symbol: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get crypto.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            
+        Returns:
+            DataFrame of crypto
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM crypto WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # PRICE HISTORY OPERATIONS
+    # =========================================================================
+    
+    def insert_price_history(self, symbol: str, asset_type: str, price_data: Dict[str, Any]) -> int:
+        """
+        Insert price history record.
+        
+        Args:
+            symbol: Stock/crypto symbol
+            asset_type: 'stock' or 'crypto'
+            price_data: Dict with timestamp, open, high, low, close, volume
+            
+        Returns:
+            Record ID
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO price_history 
+                (symbol, asset_type, timestamp, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol,
+                asset_type,
+                price_data['timestamp'],
+                price_data.get('open'),
+                price_data.get('high'),
+                price_data.get('low'),
+                price_data.get('close'),
+                price_data.get('volume')
+            ))
+            return cursor.lastrowid
+    
+    def insert_price_history_batch(self, records: List[Dict[str, Any]]) -> int:
+        """
+        Insert multiple price history records in a batch.
+        
+        Args:
+            records: List of dicts with symbol, asset_type, timestamp, open, high, low, close, volume
+            
+        Returns:
+            Number of records inserted
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            count = 0
+            for record in records:
+                try:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO price_history 
+                        (symbol, asset_type, timestamp, open, high, low, close, volume)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        record['symbol'],
+                        record['asset_type'],
+                        record['timestamp'],
+                        record.get('open'),
+                        record.get('high'),
+                        record.get('low'),
+                        record.get('close'),
+                        record.get('volume')
+                    ))
+                    count += 1
+                except Exception as e:
+                    # Log error but continue with other records
+                    import logging
+                    logging.warning(f"Error inserting price history record: {e}")
+                    continue
+            return count
+    
+    def get_price_history(self, symbol: Optional[str] = None,
+                          asset_type: Optional[str] = None,
+                          from_date: Optional[str] = None,
+                          to_date: Optional[str] = None,
+                          limit: Optional[int] = None) -> pd.DataFrame:
+        """
+        Get price history.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            asset_type: Filter by asset_type ('stock' or 'crypto', optional)
+            from_date: Filter from date (ISO format, optional)
+            to_date: Filter to date (ISO format, optional)
+            limit: Maximum records to return (optional)
+            
+        Returns:
+            DataFrame of price history
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM price_history WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            if asset_type:
+                query += " AND asset_type = ?"
+                params.append(asset_type)
+            
+            if from_date:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+            
+            if to_date:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+            
+            query += " ORDER BY timestamp DESC"
+            
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # INDICATORS OPERATIONS
+    # =========================================================================
+    
+    def insert_indicator(self, symbol: str, asset_type: str, indicator_data: Dict[str, Any]) -> int:
+        """
+        Insert indicator record.
+        
+        Args:
+            symbol: Stock/crypto symbol
+            asset_type: 'stock' or 'crypto'
+            indicator_data: Dict with timestamp and indicator values (rsi, macd, etc.)
+            
+        Returns:
+            Record ID
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO indicators 
+                (symbol, asset_type, timestamp, rsi, macd, macd_signal, macd_histogram,
+                 sma_20, sma_50, sma_200, bollinger_upper, bollinger_lower, bollinger_middle,
+                 atr, volume_sma)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol,
+                asset_type,
+                indicator_data['timestamp'],
+                indicator_data.get('rsi'),
+                indicator_data.get('macd'),
+                indicator_data.get('macd_signal'),
+                indicator_data.get('macd_histogram'),
+                indicator_data.get('sma_20'),
+                indicator_data.get('sma_50'),
+                indicator_data.get('sma_200'),
+                indicator_data.get('bollinger_upper'),
+                indicator_data.get('bollinger_lower'),
+                indicator_data.get('bollinger_middle'),
+                indicator_data.get('atr'),
+                indicator_data.get('volume_sma')
+            ))
+            return cursor.lastrowid
+    
+    def insert_indicators_batch(self, records: List[Dict[str, Any]]) -> int:
+        """
+        Insert multiple indicator records in a batch.
+        
+        Args:
+            records: List of dicts with symbol, asset_type, timestamp, and indicator values
+            
+        Returns:
+            Number of records inserted
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            count = 0
+            for record in records:
+                try:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO indicators 
+                        (symbol, asset_type, timestamp, rsi, macd, macd_signal, macd_histogram,
+                         sma_20, sma_50, sma_200, bollinger_upper, bollinger_lower, bollinger_middle,
+                         atr, volume_sma)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        record['symbol'],
+                        record['asset_type'],
+                        record['timestamp'],
+                        record.get('rsi'),
+                        record.get('macd'),
+                        record.get('macd_signal'),
+                        record.get('macd_histogram'),
+                        record.get('sma_20'),
+                        record.get('sma_50'),
+                        record.get('sma_200'),
+                        record.get('bollinger_upper'),
+                        record.get('bollinger_lower'),
+                        record.get('bollinger_middle'),
+                        record.get('atr'),
+                        record.get('volume_sma')
+                    ))
+                    count += 1
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Error inserting indicator record: {e}")
+                    continue
+            return count
+    
+    def get_indicators(self, symbol: Optional[str] = None,
+                       asset_type: Optional[str] = None,
+                       from_date: Optional[str] = None,
+                       to_date: Optional[str] = None,
+                       limit: Optional[int] = None) -> pd.DataFrame:
+        """
+        Get indicators.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            asset_type: Filter by asset_type (optional)
+            from_date: Filter from date (ISO format, optional)
+            to_date: Filter to date (ISO format, optional)
+            limit: Maximum records to return (optional)
+            
+        Returns:
+            DataFrame of indicators
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM indicators WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            if asset_type:
+                query += " AND asset_type = ?"
+                params.append(asset_type)
+            
+            if from_date:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+            
+            if to_date:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+            
+            query += " ORDER BY timestamp DESC"
+            
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # TRADES OPERATIONS
+    # =========================================================================
+    
+    def insert_trade(self, trade_data: Dict[str, Any]) -> int:
+        """
+        Insert a trade record.
+        
+        Args:
+            trade_data: Dict with symbol, asset_type, trade_type/direction, order_type, 
+                       quantity, price, total_cost, strategy, model_confidence, notes, pnl
+            
+        Returns:
+            Trade ID
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Support both 'trade_type' and 'direction' field names
+            trade_type = trade_data.get('trade_type', trade_data.get('direction', 'buy'))
+            
+            # Calculate total_cost if not provided
+            total_cost = trade_data.get('total_cost')
+            if total_cost is None:
+                quantity = trade_data.get('quantity', 0)
+                price = trade_data.get('price', 0)
+                total_cost = quantity * price
+            
+            cursor.execute("""
+                INSERT INTO trades 
+                (symbol, asset_type, trade_type, order_type, quantity, price, total_cost,
+                 strategy, model_confidence, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                trade_data['symbol'],
+                trade_data.get('asset_type', 'stock'),
+                trade_type,
+                trade_data.get('order_type', 'market'),
+                trade_data.get('quantity', 0),
+                trade_data.get('price', 0),
+                total_cost,
+                trade_data.get('strategy'),
+                trade_data.get('model_confidence'),
+                trade_data.get('notes', f"P&L: {trade_data.get('pnl', 0)}")
+            ))
+            return cursor.lastrowid
+    
+    def get_trades(self, symbol: Optional[str] = None,
+                   asset_type: Optional[str] = None,
+                   strategy: Optional[str] = None,
+                   from_date: Optional[str] = None,
+                   to_date: Optional[str] = None,
+                   limit: Optional[int] = None) -> pd.DataFrame:
+        """
+        Get trades.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            asset_type: Filter by asset_type (optional)
+            strategy: Filter by strategy (optional)
+            from_date: Filter from date (ISO format, optional)
+            to_date: Filter to date (ISO format, optional)
+            limit: Maximum records to return (optional)
+            
+        Returns:
+            DataFrame of trades
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM trades WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            if asset_type:
+                query += " AND asset_type = ?"
+                params.append(asset_type)
+            
+            if strategy:
+                query += " AND strategy = ?"
+                params.append(strategy)
+            
+            if from_date:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+            
+            if to_date:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+            
+            query += " ORDER BY timestamp DESC"
+            
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
+    # POSITIONS OPERATIONS
+    # =========================================================================
+    
+    def insert_position(self, position_data: Dict[str, Any]) -> int:
+        """
+        Insert or update a position.
+        
+        Args:
+            position_data: Dict with symbol, asset_type, quantity, avg_entry_price,
+                         current_price, unrealized_pnl, strategy, stop_loss, take_profit
+            
+        Returns:
+            Position ID
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO positions 
+                (symbol, asset_type, quantity, avg_entry_price, current_price, unrealized_pnl,
+                 strategy, stop_loss, take_profit)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                position_data['symbol'],
+                position_data['asset_type'],
+                position_data['quantity'],
+                position_data['avg_entry_price'],
+                position_data.get('current_price'),
+                position_data.get('unrealized_pnl'),
+                position_data.get('strategy'),
+                position_data.get('stop_loss'),
+                position_data.get('take_profit')
+            ))
+            return cursor.lastrowid
+    
+    def update_position(self, symbol: str, asset_type: str, updates: Dict[str, Any]) -> None:
+        """
+        Update a position.
+        
+        Args:
+            symbol: Stock/crypto symbol
+            asset_type: 'stock' or 'crypto'
+            updates: Dict with fields to update (current_price, unrealized_pnl, quantity, etc.)
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build UPDATE query dynamically
+            set_clauses = []
+            params = []
+            
+            for key, value in updates.items():
+                if key in ['current_price', 'unrealized_pnl', 'quantity', 'avg_entry_price',
+                          'strategy', 'stop_loss', 'take_profit']:
+                    set_clauses.append(f"{key} = ?")
+                    params.append(value)
+            
+            if not set_clauses:
+                return  # No valid fields to update
+            
+            params.extend([symbol, asset_type])
+            query = f"""
+                UPDATE positions 
+                SET {', '.join(set_clauses)}
+                WHERE symbol = ? AND asset_type = ?
+            """
+            cursor.execute(query, params)
+    
+    def get_positions(self, symbol: Optional[str] = None,
+                     asset_type: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get positions.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            asset_type: Filter by asset_type (optional)
+            
+        Returns:
+            DataFrame of positions
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM positions WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            if asset_type:
+                query += " AND asset_type = ?"
+                params.append(asset_type)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    def delete_position(self, symbol: str, asset_type: str) -> None:
+        """
+        Delete a position (when closing it).
+        
+        Args:
+            symbol: Stock/crypto symbol
+            asset_type: 'stock' or 'crypto'
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM positions 
+                WHERE symbol = ? AND asset_type = ?
+            """, (symbol, asset_type))
+    
+    # =========================================================================
+    # PORTFOLIO OPERATIONS
+    # =========================================================================
+    
+    def insert_portfolio_snapshot(self, snapshot_data: Dict[str, Any]) -> int:
+        """
+        Insert a portfolio snapshot.
+        
+        Args:
+            snapshot_data: Dict with cash_balance, total_position_value, total_portfolio_value,
+                          unrealized_pnl, realized_pnl
+            
+        Returns:
+            Snapshot ID
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO portfolio 
+                (cash_balance, total_position_value, total_portfolio_value, unrealized_pnl, realized_pnl)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                snapshot_data['cash_balance'],
+                snapshot_data.get('total_position_value'),
+                snapshot_data.get('total_portfolio_value'),
+                snapshot_data.get('unrealized_pnl'),
+                snapshot_data.get('realized_pnl')
+            ))
+            return cursor.lastrowid
+    
+    def get_portfolio_snapshots(self, from_date: Optional[str] = None,
+                                to_date: Optional[str] = None,
+                                limit: int = 1000) -> pd.DataFrame:
+        """
+        Get portfolio snapshots.
+        
+        Args:
+            from_date: Filter from date (ISO format, optional)
+            to_date: Filter to date (ISO format, optional)
+            limit: Maximum records to return
+            
+        Returns:
+            DataFrame of portfolio snapshots
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM portfolio WHERE 1=1"
+            params = []
+            
+            if from_date:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+            
+            if to_date:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+            
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    def get_latest_portfolio_snapshot(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the latest portfolio snapshot.
+        
+        Returns:
+            Latest snapshot dict or None
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM portfolio 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+    
+    # Aliases for trading system compatibility
+    def get_portfolio(self, limit: int = 1000) -> pd.DataFrame:
+        """Alias for get_portfolio_snapshots for trading compatibility."""
+        return self.get_portfolio_snapshots(limit=limit)
+    
+    def insert_portfolio(self, data: Dict[str, Any]) -> int:
+        """Alias for insert_portfolio_snapshot for trading compatibility."""
+        # Map trading system fields to portfolio snapshot fields
+        snapshot_data = {
+            'cash_balance': data.get('cash_balance', 0),
+            'total_position_value': 0,  # Will be calculated
+            'total_portfolio_value': data.get('total_value', data.get('cash_balance', 0)),
+            'unrealized_pnl': data.get('unrealized_pnl', 0),
+            'realized_pnl': data.get('realized_pnl', 0)
+        }
+        return self.insert_portfolio_snapshot(snapshot_data)
+    
+    # =========================================================================
+    # TRADING POSITION OPERATIONS (Extended)
+    # =========================================================================
+    
+    def open_position(self, position_data: Dict[str, Any]) -> int:
+        """
+        Open a new trading position.
+        
+        Args:
+            position_data: Dict with symbol, asset_type, strategy, direction,
+                          quantity, entry_price, stop_loss, take_profit, etc.
+                          
+        Returns:
+            Position ID
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO positions 
+                (symbol, asset_type, quantity, avg_entry_price, current_price, unrealized_pnl,
+                 strategy, stop_loss, take_profit)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                position_data['symbol'],
+                position_data.get('asset_type', 'stock'),
+                position_data['quantity'],
+                position_data.get('entry_price', position_data.get('avg_entry_price')),
+                position_data.get('current_price', position_data.get('entry_price')),
+                position_data.get('unrealized_pnl', 0),
+                position_data.get('strategy'),
+                position_data.get('stop_loss'),
+                position_data.get('take_profit')
+            ))
+            return cursor.lastrowid
+    
+    def close_position(self, position_id: int, close_price: float, pnl: float) -> None:
+        """
+        Close a position by ID.
+        
+        Args:
+            position_id: Position ID to close
+            close_price: Closing price
+            pnl: Realized P&L from this position
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Delete the position (positions table tracks open positions)
+            cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
+    
+    def update_position_price(self, position_id: int, current_price: float, 
+                               unrealized_pnl: float) -> None:
+        """
+        Update position current price and unrealized P&L.
+        
+        Args:
+            position_id: Position ID
+            current_price: Current market price
+            unrealized_pnl: Current unrealized P&L
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE positions 
+                SET current_price = ?, unrealized_pnl = ?
+                WHERE id = ?
+            """, (current_price, unrealized_pnl, position_id))
+    
+    def get_positions(self, symbol: Optional[str] = None,
+                     asset_type: Optional[str] = None,
+                     status: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get positions.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            asset_type: Filter by asset_type (optional)
+            status: 'open' or 'closed' (optional, currently all positions are open)
+            
+        Returns:
+            DataFrame of positions
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM positions WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            
+            if asset_type:
+                query += " AND asset_type = ?"
+                params.append(asset_type)
+            
+            # Note: status filtering not needed since we only store open positions
+            # closed positions are deleted and recorded as trades
+            
+            return pd.read_sql_query(query, conn, params=params)
+    
+    # =========================================================================
     # UTILITY OPERATIONS
     # =========================================================================
     
@@ -902,10 +1921,171 @@ class Database:
             
             stats = {}
             tables = ['fixtures', 'odds', 'scores', 'bet_history', 
-                      'model_versions', 'metrics', 'ingestion_metadata']
+                      'model_versions', 'metrics', 'ingestion_metadata',
+                      'stocks', 'crypto', 'price_history', 'indicators', 
+                      'trades', 'positions', 'portfolio']
             
             for table in tables:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 stats[table] = cursor.fetchone()[0]
             
             return stats
+    
+    def reset_database(self, preserve_models: bool = True) -> Dict[str, Any]:
+        """
+        Reset database by clearing all data tables.
+        
+        Preserves schema and optionally model_versions. Creates a backup
+        before resetting.
+        
+        Args:
+            preserve_models: If True, keep model_versions table intact
+            
+        Returns:
+            Dict with reset results (records_deleted, backup_path, etc.)
+        """
+        from data.backup import DatabaseBackup
+        
+        backup = DatabaseBackup()
+        backup_path = backup.create_backup("pre_reset")
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Disable foreign keys temporarily for faster deletion
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            
+            # Tables to clear (in dependency order)
+            tables_to_clear = [
+                'bet_history',
+                'bet_settlements',
+                'odds',
+                'scores',
+                'fixtures',
+                'ingestion_metadata',
+                'metrics',
+                'dismissed_errors'
+            ]
+            
+            # Add model_versions if not preserving models
+            if not preserve_models:
+                tables_to_clear.append('model_versions')
+            
+            records_deleted = {}
+            total_deleted = 0
+            
+            for table in tables_to_clear:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count_before = cursor.fetchone()[0]
+                cursor.execute(f"DELETE FROM {table}")
+                records_deleted[table] = count_before
+                total_deleted += count_before
+            
+            # Reset auto-increment counters
+            for table in tables_to_clear:
+                try:
+                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name = '{table}'")
+                except:
+                    pass  # Table might not use auto-increment
+            
+            # Re-enable foreign keys
+            cursor.execute("PRAGMA foreign_keys = ON")
+            
+            # Commit transaction before VACUUM (VACUUM can't run in transaction)
+            conn.commit()
+            
+            # Vacuum to reclaim space (runs outside transaction)
+            cursor.execute("VACUUM")
+            
+            return {
+                "success": True,
+                "backup_path": backup_path,
+                "records_deleted": records_deleted,
+                "total_deleted": total_deleted,
+                "preserved_models": preserve_models,
+                "model_versions_kept": self.get_model_versions(domain=None).shape[0] if preserve_models else 0
+            }
+    
+    def sync_from_production(self, production_db_path: str) -> Dict[str, Any]:
+        """
+        Sync all data from production database to this database (one-way).
+        
+        This is used to copy production data to debug database for testing.
+        Clears existing data in target database first, then copies all data.
+        
+        Args:
+            production_db_path: Path to production database
+            
+        Returns:
+            Dict with sync results (records_copied, etc.)
+        """
+        from pathlib import Path
+        
+        prod_path = Path(production_db_path)
+        if not prod_path.exists():
+            raise ValueError(f"Production database not found: {production_db_path}")
+        
+        # Tables to sync (in dependency order)
+        tables_to_sync = [
+            'fixtures',
+            'scores',
+            'odds',
+            'ingestion_metadata',
+            'bet_history',
+            'bet_settlements',
+            'metrics',
+            'dismissed_errors',
+            'model_versions'
+        ]
+        
+        records_copied = {}
+        total_copied = 0
+        
+        # Connect to both databases
+        with sqlite3.connect(production_db_path) as prod_conn:
+            prod_conn.row_factory = sqlite3.Row
+            
+            with self._get_connection() as target_conn:
+                target_cursor = target_conn.cursor()
+                prod_cursor = prod_conn.cursor()
+                
+                # Disable foreign keys for faster insertion
+                target_cursor.execute("PRAGMA foreign_keys = OFF")
+                
+                # Clear target database first (except schema)
+                for table in tables_to_sync:
+                    target_cursor.execute(f"DELETE FROM {table}")
+                    target_cursor.execute(f"DELETE FROM sqlite_sequence WHERE name = '{table}'")
+                
+                # Copy data from production to target
+                for table in tables_to_sync:
+                    # Get all rows from production
+                    prod_cursor.execute(f"SELECT * FROM {table}")
+                    rows = prod_cursor.fetchall()
+                    
+                    if len(rows) == 0:
+                        records_copied[table] = 0
+                        continue
+                    
+                    # Get column names
+                    columns = [description[0] for description in prod_cursor.description]
+                    placeholders = ','.join(['?' for _ in columns])
+                    columns_str = ','.join(columns)
+                    
+                    # Insert into target
+                    insert_sql = f"INSERT OR REPLACE INTO {table} ({columns_str}) VALUES ({placeholders})"
+                    target_cursor.executemany(insert_sql, [tuple(row) for row in rows])
+                    
+                    records_copied[table] = len(rows)
+                    total_copied += len(rows)
+                
+                # Re-enable foreign keys
+                target_cursor.execute("PRAGMA foreign_keys = ON")
+        
+        return {
+            "success": True,
+            "records_copied": records_copied,
+            "total_copied": total_copied,
+            "source_db": str(production_db_path),
+            "target_db": self.db_path
+        }

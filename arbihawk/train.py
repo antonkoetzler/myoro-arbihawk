@@ -1,6 +1,8 @@
 """
 Training script for Arbihawk betting prediction models.
 Trains models for all markets (1x2, over_under, btts).
+
+Optimized to compute features once and reuse for all markets.
 """
 
 import sys
@@ -21,6 +23,8 @@ from utils.colors import (
 def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[[str, str], None]] = None) -> Tuple[bool, Dict[str, Any]]:
     """
     Train prediction models for all markets.
+    
+    Features are computed once and reused for all markets (1x2, over_under, btts).
     
     Returns:
         Tuple of (success: bool, metrics: dict)
@@ -55,34 +59,60 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
         "no_data_reason": None  # Explanation if no data available
     }
     
+    # Compute features ONCE for all markets (vectorized)
+    if log_callback:
+        log_callback("info", "Creating features for all markets (vectorized)...")
+    else:
+        print_step("Creating features for all markets (vectorized)...")
+    
+    try:
+        X, labels, dates, fixture_ids = feature_engineer.create_training_data(log_callback=log_callback)
+    except Exception as e:
+        error_msg = f"Error creating features: {e}"
+        if log_callback:
+            log_callback("error", error_msg)
+        else:
+            print_error(error_msg)
+        metrics["errors"].append(error_msg)
+        return False, metrics
+    
+    if len(X) == 0 or len(labels) == 0:
+        if log_callback:
+            log_callback("warning", "No training data available. Skipping all markets...")
+        else:
+            print_warning("No training data available. Skipping all markets...")
+        metrics["no_data_reason"] = "No completed matches with scores available for training"
+        return True, metrics
+    
+    if log_callback:
+        log_callback("info", f"Features computed: {len(X)} samples, {len(X.columns)} features")
+    else:
+        print_info(f"Features computed: {len(X)} samples, {len(X.columns)} features")
+    
+    # Train each market using shared features
     for market in markets:
         if log_callback:
             log_callback("info", f"Training {market} market")
         else:
             print_info(f"Training {market} market")
         
-        # Create training data
-        if log_callback:
-            log_callback("info", f"-> Creating features...")
-        else:
-            print_step("Creating features...")
-        try:
-            X, y = feature_engineer.create_training_data(market=market)
-        except Exception as e:
-            error_msg = f"Error creating features for {market}: {e}"
+        # Get labels for this market
+        if market not in labels:
             if log_callback:
-                log_callback("error", error_msg)
+                log_callback("warning", f"No labels for {market} market. Skipping...")
             else:
-                print_error(error_msg)
-            metrics["markets"][market] = {"error": str(e), "error_type": "feature_creation"}
-            actual_errors.append(error_msg)
+                print_warning(f"No labels for {market} market. Skipping...")
+            metrics["markets"][market] = {"skipped": True, "reason": "No labels"}
+            no_data_count += 1
             continue
         
-        if len(X) == 0 or len(y) == 0:
+        y = labels[market]
+        
+        if len(y) == 0:
             if log_callback:
-                log_callback("warning", f"No training data available. Skipping...")
+                log_callback("warning", f"No training data available for {market}. Skipping...")
             else:
-                print_warning(f"No training data available. Skipping...")
+                print_warning(f"No training data available for {market}. Skipping...")
             metrics["markets"][market] = {"skipped": True, "reason": "No training data"}
             no_data_count += 1
             continue
@@ -105,13 +135,30 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
             print_step("Training model...")
         predictor = BettingPredictor(market=market)
         try:
-            predictor.train(X, y)
+            predictor.train(X, y, dates=dates, fixture_ids=fixture_ids, log_callback=log_callback, db=db)
             # Get CV score from predictor (defaults to 0.5 if not available)
             cv_score = getattr(predictor, 'cv_score', 0.5)
             cv_std = getattr(predictor, 'cv_std', 0.0)
             cv_folds = getattr(predictor, 'cv_folds', 5)
             if log_callback:
                 log_callback("info", f"Cross-validation accuracy ({cv_folds}-fold): {cv_score:.3f} (+/- {cv_std * 2:.3f})")
+            
+            # Get betting metrics if available
+            betting_metrics = getattr(predictor, 'betting_metrics', {})
+            if betting_metrics:
+                if log_callback:
+                    log_callback("info", 
+                        f"Betting metrics - ROI: {betting_metrics.get('roi', 0):.2%}, "
+                        f"Profit: ${betting_metrics.get('profit', 0):.2f}, "
+                        f"Win Rate: {betting_metrics.get('win_rate', 0):.2%}, "
+                        f"Sharpe: {betting_metrics.get('sharpe_ratio', 0):.2f}, "
+                        f"Bets: {betting_metrics.get('total_bets', 0)}")
+                else:
+                    print_info(f"Betting metrics - ROI: {betting_metrics.get('roi', 0):.2%}, "
+                              f"Profit: ${betting_metrics.get('profit', 0):.2f}, "
+                              f"Win Rate: {betting_metrics.get('win_rate', 0):.2%}, "
+                              f"Sharpe: {betting_metrics.get('sharpe_ratio', 0):.2f}, "
+                              f"Bets: {betting_metrics.get('total_bets', 0)}")
         except Exception as e:
             error_msg = f"Error training model for {market}: {e}"
             if log_callback:
@@ -138,15 +185,43 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
             # Save to versioning system
             from models.versioning import ModelVersionManager
             version_manager = ModelVersionManager(db)
+            
+            # Get calibration metrics if available
+            calibration_metrics = getattr(predictor, 'calibration_metrics', {})
+            
+            # Build performance metrics including calibration, hyperparameters, and betting metrics
+            performance_metrics = {
+                "features": len(X.columns),
+                "label_distribution": y.value_counts().to_dict()
+            }
+            
+            # Add calibration metrics if available
+            if calibration_metrics:
+                if 'calibrated' in calibration_metrics:
+                    performance_metrics['brier_score'] = calibration_metrics['calibrated'].get('brier_score')
+                    performance_metrics['ece'] = calibration_metrics['calibrated'].get('ece')
+                if 'improvement' in calibration_metrics:
+                    performance_metrics['calibration_improvement'] = calibration_metrics['improvement']
+            
+            # Add hyperparameter tuning results if available
+            hyperparameters = getattr(predictor, 'hyperparameters', None)
+            tuning_metrics = getattr(predictor, 'tuning_metrics', {})
+            if hyperparameters:
+                performance_metrics['hyperparameters'] = hyperparameters
+                performance_metrics['tuning_metrics'] = tuning_metrics
+            
+            # Add betting metrics if available
+            betting_metrics = getattr(predictor, 'betting_metrics', {})
+            if betting_metrics:
+                performance_metrics['betting_metrics'] = betting_metrics
+            
             version_id = version_manager.save_version(
+                domain='betting',
                 market=market,
                 model_path=str(model_path),
                 training_samples=len(X),
                 cv_score=cv_score,
-                performance_metrics={
-                    "features": len(X.columns),
-                    "label_distribution": y.value_counts().to_dict()
-                },
+                performance_metrics=performance_metrics,
                 activate=True
             )
             if log_callback:
@@ -154,13 +229,18 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
             else:
                 print_info(f"Model version {version_id} saved and activated")
             
+            # Get calibration metrics if available
+            calibration_metrics = getattr(predictor, 'calibration_metrics', {})
+            
             metrics["markets"][market] = {
                 "samples": len(X),
                 "features": len(X.columns),
                 "model_path": str(model_path),
                 "version_id": version_id,
                 "cv_score": cv_score,
-                "label_distribution": y.value_counts().to_dict()
+                "label_distribution": y.value_counts().to_dict(),
+                "calibration_metrics": calibration_metrics,
+                "betting_metrics": betting_metrics
             }
             metrics["total_samples"] += len(X)
         except Exception as e:

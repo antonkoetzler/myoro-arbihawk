@@ -54,6 +54,13 @@ export interface ModelVersion {
   cv_score?: number;
   training_samples: number;
   trained_at?: string;
+  brier_score?: number;
+  ece?: number;
+  calibration_improvement?: {
+    brier_score?: number;
+    ece?: number;
+  };
+  performance_metrics?: Record<string, unknown>;
 }
 
 export interface ModelsResponse {
@@ -107,6 +114,11 @@ export interface ScraperWorkersConfig {
   max_workers_leagues_playwright?: number;
 }
 
+export interface EnvironmentConfig {
+  environment: 'debug' | 'production';
+  db_path: string;
+}
+
 export interface TriggerAutomationParams {
   mode: string;
   max_workers_leagues?: number;
@@ -120,6 +132,103 @@ export interface WebSocketLog {
   level?: 'error' | 'warning' | 'info' | 'success' | 'ok';
   message: string;
   type?: string;
+  domain?: 'betting' | 'trading';
+}
+
+// Trading Types
+export interface TradingPortfolio {
+  cash_balance: number;
+  portfolio_value: number;
+  available_cash: number;
+  positions_count: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_pnl: number;
+  error?: string;
+}
+
+export interface TradingPosition {
+  id: number;
+  symbol: string;
+  asset_type: string;
+  strategy: string;
+  direction: 'long' | 'short';
+  quantity: number;
+  entry_price: number;
+  current_price: number;
+  unrealized_pnl: number;
+  pnl_pct: number;
+  stop_loss?: number;
+  take_profit?: number;
+  opened_at: string;
+}
+
+export interface TradingTrade {
+  id: number;
+  symbol: string;
+  asset_type: string;
+  strategy: string;
+  direction: string;
+  order_type: string;
+  quantity: number;
+  price: number;
+  pnl?: number;
+  timestamp: string;
+}
+
+export interface TradingSignal {
+  symbol: string;
+  asset_type: string;
+  strategy: string;
+  direction: 'long' | 'short';
+  confidence: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  risk_reward: number;
+  expected_value: number;
+  timestamp: string;
+}
+
+export interface TradingPerformance {
+  roi: number;
+  total_return: number;
+  win_rate: number;
+  profit: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  avg_win: number;
+  avg_loss: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  current_value: number;
+  starting_balance: number;
+  error?: string;
+}
+
+export interface TradingModelStatus {
+  [strategy: string]: {
+    available: boolean;
+    path: string;
+    version?: string;
+    cv_score?: number;
+    created_at?: string;
+  };
+}
+
+export interface TradingStatus {
+  enabled: boolean;
+  last_collection?: string;
+  last_collection_duration_seconds?: number;
+  watchlist: {
+    stocks: string[];
+    crypto: string[];
+  };
+  api_keys_configured: {
+    alpha_vantage: boolean;
+    coingecko: boolean;
+  };
 }
 
 // Toast Types
@@ -171,4 +280,6 @@ export type ApiFunction = (
     errorId: number | null,
     errorKey: string | null
   ) => Promise<unknown>;
+  getEnvironment: () => Promise<EnvironmentConfig>;
+  updateEnvironment: (environment: 'debug' | 'production') => Promise<EnvironmentConfig>;
 };

@@ -128,22 +128,31 @@ else:
 print("\n8. Checking for invalid odds values...")
 cursor.execute("""
     SELECT COUNT(*) FROM odds 
-    WHERE odds_value IS NULL OR odds_value <= 0 OR odds_value > 1000
+    WHERE odds_value IS NULL OR odds_value <= 0
 """)
 invalid_odds = cursor.fetchone()[0]
 if invalid_odds > 0:
-    issues.append(f"INVALID ODDS VALUES: {invalid_odds} odds have NULL, <= 0, or > 1000")
+    issues.append(f"INVALID ODDS VALUES: {invalid_odds} odds have NULL or <= 0")
     print(f"   WARNING {invalid_odds} invalid odds values")
     cursor.execute("""
         SELECT fixture_id, bookmaker_name, market_name, outcome_name, odds_value
         FROM odds 
-        WHERE odds_value IS NULL OR odds_value <= 0 OR odds_value > 1000
+        WHERE odds_value IS NULL OR odds_value <= 0
         LIMIT 5
     """)
     for row in cursor.fetchall():
         print(f"   - fixture_id={row[0]}, {row[1]}, {row[2]}, {row[3]}, odds={row[4]}")
 else:
     print("   OK - All odds values are valid")
+    
+# Check for very high odds (likely bookmaker caps - not an error, just informational)
+cursor.execute("""
+    SELECT COUNT(*) FROM odds 
+    WHERE odds_value > 1000
+""")
+high_odds = cursor.fetchone()[0]
+if high_odds > 0:
+    print(f"   INFO: {high_odds} odds > 1000 (likely bookmaker caps for unlikely outcomes - this is normal)")
 
 # 9. Check for pending bets that should be settled
 print("\n9. Checking for old pending bets...")

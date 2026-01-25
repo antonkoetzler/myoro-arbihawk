@@ -1,17 +1,28 @@
 # Arbihawk
 
-The arbitrage hawk - A neural network-based betting prediction and recommendation system.
+The arbitrage hawk - A multi-domain prediction and trading system powered by machine learning.
 
 ## Overview
 
-Arbihawk uses machine learning (XGBoost) to predict match outcomes and identify value bets based on expected value calculations. The system:
+Arbihawk uses machine learning (XGBoost) for two domains:
 
+### Sports Betting
 - Collects match data and odds from scrapers (Betano, Flashscore, Livescore)
-- Stores data locally in SQLite
-- Trains models on historical data
+- Predicts match outcomes (1x2, Over/Under, BTTS)
 - Identifies value bets with positive expected value
 - Tracks performance with fake money system
-- Provides a dashboard for monitoring and control
+
+### Stock/Crypto Trading
+- Fetches price data from Alpha Vantage (stocks) and CoinGecko (crypto)
+- Technical analysis features (RSI, MACD, Bollinger Bands, ATR)
+- Three strategies: Momentum, Swing Trading, Volatility Breakout
+- Paper trading with portfolio management and position sizing
+
+Both domains share:
+- SQLite local storage
+- Model versioning and training pipelines
+- Dashboard for monitoring and control
+- Automated scheduling
 
 ## Setup
 
@@ -88,8 +99,18 @@ arbihawk/
 ├── config/              # JSON configuration files
 ├── dashboard/           # FastAPI backend and React frontend
 ├── data/                # Database and data processing
-├── engine/              # Value betting engine
+│   ├── features.py      # Betting feature engineering
+│   └── stock_features.py # Trading feature engineering
+├── engine/              # Signal engines
+│   ├── value_bet.py     # Value betting engine
+│   └── trade_signal.py  # Trading signal engine
 ├── models/              # XGBoost prediction models
+│   ├── predictor.py     # Betting predictor
+│   └── trading_predictor.py # Trading predictor
+├── trading/             # Stock/crypto trading
+│   ├── portfolio_manager.py
+│   ├── execution.py
+│   └── service.py
 ├── monitoring/          # Metrics and reporting
 ├── scrapers/            # Git submodule for data scrapers
 ├── testing/             # Fake money system
@@ -116,13 +137,23 @@ All configuration is stored in JSON files in the `config/` directory:
 
 ## Documentation Index
 
+### General
 - [Tasks Guide](docs/tasks.md) - Using VS Code tasks for all commands
 - [Setup Guide](docs/setup.md) - Detailed setup instructions
+- [Dashboard Guide](docs/dashboard.md) - Dashboard usage and API reference
+- [Automation Guide](docs/automation.md) - Automated scheduling and workflows
+- [Versioning Guide](docs/versioning.md) - Model versioning and rollback
+
+### Sports Betting
 - [Training Guide](docs/training.md) - Model training documentation
 - [Predictor Guide](docs/predictor.md) - Model architecture and usage
+- [Calibration Guide](docs/calibration.md) - Probability calibration and ROI improvement
 - [Ingestion Guide](docs/ingestion.md) - Data ingestion from scrapers
-- [Automation Guide](docs/automation.md) - Automated scheduling and workflows
 - [Testing Guide](docs/testing.md) - Fake money system and performance testing
 - [Monitoring Guide](docs/monitoring.md) - Metrics and performance tracking
-- [Versioning Guide](docs/versioning.md) - Model versioning and rollback
-- [Dashboard Guide](docs/dashboard.md) - Dashboard usage and API reference
+
+### Stock/Crypto Trading
+- [Trading Guide](docs/trading.md) - **Complete trading system documentation** ⭐
+
+### Development
+- [Profitability Backlog](docs/backlog/backlog.md) - Tracked improvements for profitability
