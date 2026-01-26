@@ -12,8 +12,11 @@ The automation system runs in several modes:
 - **Training Mode**: Trains models on collected data only
 - **Betting Mode**: Places bets using active models (if enabled)
 - **Full Cycle**: Runs collection → training → betting sequentially
-- **Daemon Mode**: Continuously runs full cycles at configured intervals
+- **Daemon Mode**: Continuously runs full cycles at configured intervals (betting automation)
+- **Trading Daemon Mode**: Continuously runs full trading cycles (collection → training → cycle) at configured intervals
 - **Once Mode**: Runs a single full cycle and exits (useful for cron jobs)
+
+**Note:** Trading daemon mode is separate from betting daemon mode. See [Trading Guide](trading.md) for details on automated trading.
 
 ## Data Collection Cycle
 

@@ -3,10 +3,12 @@
 This document tracks major gaps and improvements, organized by category and priority.
 
 **Domains:**
+
 - **Betting**: Sports betting prediction system
 - **Trading**: Stock/crypto trading system (NEW)
 
 **Categories:**
+
 - **Profitability**: Tasks that improve model accuracy and profitability
 - **Performance**: Tasks that optimize runtime and system efficiency
 - **Data Quality**: Tasks that improve data collection and validation
@@ -17,10 +19,11 @@ This document tracks major gaps and improvements, organized by category and prio
 
 ### Stock/Crypto Trading System ✅
 
-**Status:** COMPLETED  
+**Status:** COMPLETED
 **Impact:** New revenue domain with ML-driven trading
 
 **Implemented:**
+
 - Feature engineering (RSI, MACD, Bollinger Bands, ATR, momentum features)
 - ML predictors for momentum, swing, and volatility strategies
 - Trade signal engine with expected value calculations
@@ -33,6 +36,28 @@ This document tracks major gaps and improvements, organized by category and prio
 - Documentation
 
 See [Trading Guide](trading.md) for details.
+
+### Profitability-Based Model Selection ✅
+
+**Status:** COMPLETED  
+**Impact:** Ensures only profitable models are activated, improving overall system profitability
+
+**Implemented:**
+
+- Betting metrics (ROI, profit, Sharpe ratio) computed during training
+- Profitability-based model activation with configurable thresholds
+- Models below ROI threshold saved but not activated (for comparison)
+- Configurable minimum bets requirement for meaningful evaluation
+- Integration with model versioning system
+
+**Configuration:**
+
+Edit `config/automation.json` → `model_versioning.profitability_selection`:
+
+- `enabled`: Enable profitability-based selection (default: true)
+- `min_roi`: Minimum ROI to activate (default: 0.0 = break even)
+- `min_bets`: Minimum bets for evaluation (default: 10)
+- `save_unprofitable`: Save unprofitable models for comparison (default: true)
 
 ---
 
@@ -68,26 +93,6 @@ See [Trading Guide](trading.md) for details.
 - **Temporal features**: Day of week, time of day (mentioned in docs but not implemented)
 
 ---
-
-### 2. Model Evaluation for Betting
-
-**Category:** Profitability  
-**Status:** Not implemented  
-**Impact:** Optimizing for accuracy doesn't guarantee profitability  
-**Readiness:** ✅ Good to go - Critical for ensuring profitability-focused model selection
-
-**Current State:**
-
-- Models evaluated on accuracy only
-- No backtesting during training to assess profitability
-- No ROI/profit metrics during model selection
-
-**What's Needed:**
-
-- Evaluate models on betting-specific metrics during training
-- Backtest on validation set with actual odds
-- Use ROI, profit, Sharpe ratio for model selection
-- Compare models based on profitability, not just accuracy
 
 ---
 
@@ -280,8 +285,7 @@ See [Trading Guide](trading.md) for details.
 ### Profitability (High Impact)
 
 4. **Feature Engineering Gaps (#1)** - Incremental improvements, can be done iteratively
-5. **Model Evaluation for Betting (#2)** - Better model selection based on profitability
-6. **Training Data Quality (#10)** - Important but lower impact
+5. **Training Data Quality (#10)** - Important but lower impact
 
 ### Optimization (After Core Issues Fixed)
 

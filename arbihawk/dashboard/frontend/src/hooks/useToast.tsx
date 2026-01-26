@@ -26,7 +26,7 @@ interface ToastProviderProps {
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const timeoutsRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
+  const timeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     return () => {

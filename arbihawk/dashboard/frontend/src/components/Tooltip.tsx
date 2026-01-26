@@ -62,15 +62,20 @@ export function Tooltip({ text, children, className = '' }: TooltipProps) {
     });
   };
 
+  const isFullWidth = className.includes('w-full');
+  const containerClass = isFullWidth 
+    ? `relative flex items-center ${className}`
+    : `relative inline-flex items-center ${className}`;
+  
   return (
     <div
       ref={containerRef}
-      className={`relative inline-flex items-center ${className}`}
+      className={containerClass}
     >
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setShow(false)}
-        className='cursor-help'
+        className={isFullWidth ? 'cursor-help w-full' : 'cursor-help'}
       >
         {children}
       </div>

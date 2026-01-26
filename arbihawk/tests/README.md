@@ -1,6 +1,6 @@
 # Arbihawk Test Suite
 
-Comprehensive test suite for the Arbihawk betting prediction system.
+Comprehensive test suite for the Arbihawk ML-powered prediction & trading platform.
 
 ## Overview
 

@@ -47,6 +47,27 @@ export interface BetsResponse {
   total_pages: number;
 }
 
+export interface TopConfidenceBet {
+  fixture_id: string;
+  home_team: string;
+  away_team: string;
+  start_time: string;
+  market: string;
+  outcome: string;
+  odds: number;
+  probability: number;
+  expected_value: number;
+  bookmaker: string;
+  tournament_name?: string;
+}
+
+export interface TopConfidenceBetResponse {
+  bets: TopConfidenceBet[];
+  count: number;
+  sort_by?: string;
+  message?: string;
+}
+
 export interface ModelVersion {
   market: string;
   version_id: number;
@@ -219,6 +240,7 @@ export interface TradingModelStatus {
 
 export interface TradingStatus {
   enabled: boolean;
+  current_task?: string | null;
   last_collection?: string;
   last_collection_duration_seconds?: number;
   watchlist: {

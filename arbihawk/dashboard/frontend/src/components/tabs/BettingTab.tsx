@@ -1,12 +1,15 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Download, ChevronLeft, ChevronRight, Filter, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Search, Activity, TrendingUp, Database, Target, Clock } from 'lucide-react';
 import type { createApi } from '../../api/api';
-import type { BetsResponse, Bet } from '../../types';
+import type { BetsResponse, TopConfidenceBet } from '../../types';
+import { StatCard } from '../StatCard';
+import { formatPercent, formatMoney } from '../../utils/formatters';
 
 interface BettingTabProps {
   api: ReturnType<typeof createApi>;
+  bankroll?: any;
 }
 
 interface Filters {
@@ -25,7 +28,7 @@ type FilterType = 'date' | 'tournament' | 'market' | 'outcome' | 'result' | null
 /**
  * Betting tab component - displays detailed bet history table with filtering and pagination
  */
-export function BettingTab({ api }: BettingTabProps) {
+export function BettingTab({ api, bankroll }: BettingTabProps) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [filters, setFilters] = useState<Filters>({});
@@ -35,13 +38,16 @@ export function BettingTab({ api }: BettingTabProps) {
   const [tempFilterValue, setTempFilterValue] = useState<string>('');
   const [tempDateFrom, setTempDateFrom] = useState<string>('');
   const [tempDateTo, setTempDateTo] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [topBetSortBy, setTopBetSortBy] = useState<'confidence' | 'ev'>('confidence');
   const modalRef = useRef<HTMLDivElement>(null);
 
   const queryParams = useMemo(() => ({
     ...filters,
-    page,
+    search: searchQuery.trim() || undefined,
+    page: searchQuery.trim() ? 1 : page, // Reset to page 1 when searching
     per_page: perPage,
-  }), [filters, page, perPage]);
+  }), [filters, searchQuery, page, perPage]);
 
   const { data: betsResponse, isLoading } = useQuery<BetsResponse>({
     queryKey: ['bets', queryParams],
@@ -65,7 +71,17 @@ export function BettingTab({ api }: BettingTabProps) {
   const uniqueMarkets = filterValues?.markets ?? [];
   const uniqueTournaments = filterValues?.tournaments ?? [];
 
-  // Apply client-side sorting for numeric columns
+  // Fetch top confidence bet
+  const { data: topBetData, isLoading: isLoadingTopBet } = useQuery({
+    queryKey: ['top-confidence-bet', topBetSortBy],
+    queryFn: () => api.getTopConfidenceBet(topBetSortBy, 1),
+    refetchInterval: 45000, // Refresh every 45 seconds
+    retry: false,
+  });
+
+  const topBet: TopConfidenceBet | undefined = topBetData?.bets?.[0];
+
+  // Apply client-side sorting (search is handled server-side)
   const sortedBets = useMemo(() => {
     if (!sortColumn || !sortDirection) return bets;
     
@@ -413,21 +429,272 @@ export function BettingTab({ api }: BettingTabProps) {
     return createPortal(modalContent, document.body);
   };
 
+  // Determine win rate trend
+  const getWinRateTrend = (): 'up' | 'down' | null => {
+    const wins = bankroll?.wins ?? 0;
+    const losses = bankroll?.losses ?? 0;
+    if (wins === 0 && losses === 0) return null;
+    return (bankroll?.win_rate ?? 0) > 0.5 ? 'up' : 'down';
+  };
+
+  // Format start time
+  const formatStartTime = (startTime?: string) => {
+    if (!startTime) return '';
+    try {
+      const date = new Date(startTime);
+      const now = new Date();
+      const diffMs = date.getTime() - now.getTime();
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (diffMs < 0) {
+        return 'Started';
+      } else if (diffHours > 0) {
+        return `in ${diffHours}h ${diffMins}m`;
+      } else {
+        return `in ${diffMins}m`;
+      }
+    } catch {
+      return startTime;
+    }
+  };
+
+  // Get confidence color
+  const getConfidenceColor = (probability: number) => {
+    if (probability >= 0.7) return 'text-emerald-400';
+    if (probability >= 0.5) return 'text-yellow-400';
+    return 'text-orange-400';
+  };
+
+  // Get EV color
+  const getEVColor = (ev: number) => {
+    if (ev >= 0.1) return 'text-emerald-400';
+    if (ev >= 0.05) return 'text-yellow-400';
+    return 'text-orange-400';
+  };
+
   return (
     <div className='space-y-6'>
-      <div className='flex items-center justify-between'>
-        <h2 className='text-xl font-semibold'>Betting Performance</h2>
-        <a
-          href='/api/bets/export?format=csv'
-          className='btn-secondary flex items-center gap-2'
-        >
-          <Download size={16} /> Export CSV
-        </a>
+      {/* Top Confidence Bet Hero Card */}
+      <div className='card border-2 border-emerald-500/30 bg-gradient-to-br from-slate-800 to-slate-900'>
+        <div className='mb-4 flex items-center justify-between'>
+          <div className='flex items-center gap-3'>
+            <div className='rounded-lg bg-emerald-500/20 p-2'>
+              <Target className='text-emerald-400' size={24} />
+            </div>
+            <div>
+              <h2 className='text-xl font-bold text-slate-100'>Today's Top Bet</h2>
+              <p className='text-sm text-slate-400'>Most confident recommendation for today</p>
+            </div>
+          </div>
+          <div className='flex gap-2'>
+            <button
+              onClick={() => setTopBetSortBy('confidence')}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                topBetSortBy === 'confidence'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              Highest Confidence
+            </button>
+            <button
+              onClick={() => setTopBetSortBy('ev')}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                topBetSortBy === 'ev'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              Best Value (EV)
+            </button>
+          </div>
+        </div>
+
+        {isLoadingTopBet ? (
+          <div className='py-8 text-center text-slate-400'>
+            <div className='inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-500'></div>
+            <p className='mt-2'>Loading top bet...</p>
+          </div>
+        ) : topBet ? (
+          <div className='grid grid-cols-1 gap-6 md:grid-cols-3'>
+            {/* Match Info */}
+            <div className='space-y-3'>
+              <div>
+                <p className='text-xs text-slate-400'>Match</p>
+                <p className='text-lg font-semibold text-slate-100'>
+                  {topBet.home_team} vs {topBet.away_team}
+                </p>
+                {topBet.tournament_name && (
+                  <p className='text-sm text-slate-400'>{topBet.tournament_name}</p>
+                )}
+              </div>
+              <div className='flex items-center gap-2 text-sm text-slate-400'>
+                <Clock size={14} />
+                <span>{formatStartTime(topBet.start_time)}</span>
+              </div>
+            </div>
+
+            {/* Bet Recommendation */}
+            <div className='space-y-3'>
+              <div>
+                <p className='text-xs text-slate-400'>Recommendation</p>
+                <p className='text-lg font-semibold text-slate-100'>{topBet.outcome}</p>
+                <p className='text-sm text-slate-400'>{topBet.market}</p>
+              </div>
+              <div className='flex items-center gap-2'>
+                <span className='text-sm text-slate-400'>Odds:</span>
+                <span className='text-lg font-mono font-semibold text-slate-100'>{topBet.odds.toFixed(2)}</span>
+              </div>
+              {topBet.bookmaker && (
+                <p className='text-xs text-slate-500'>via {topBet.bookmaker}</p>
+              )}
+            </div>
+
+            {/* Metrics */}
+            <div className='space-y-3'>
+              <div>
+                <p className='text-xs text-slate-400'>Confidence</p>
+                <p className={`text-2xl font-bold ${getConfidenceColor(topBet.probability)}`}>
+                  {(topBet.probability * 100).toFixed(1)}%
+                </p>
+              </div>
+              <div>
+                <p className='text-xs text-slate-400'>Expected Value</p>
+                <p className={`text-xl font-semibold ${getEVColor(topBet.expected_value)}`}>
+                  {(topBet.expected_value * 100).toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className='py-8 text-center text-slate-400'>
+            <Target className='mx-auto mb-2 opacity-50' size={32} />
+            <p className='text-sm'>
+              {topBetData?.message || 'No confident bets found for today'}
+            </p>
+            <p className='mt-1 text-xs text-slate-500'>
+              Check back later or run data collection and training
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Stats Grid */}
+      <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4'>
+        <StatCard
+          title='Balance'
+          value={formatMoney(bankroll?.current_balance)}
+          subtitle={`Started: ${formatMoney(bankroll?.starting_balance)}`}
+          icon={TrendingUp}
+          trend={
+            bankroll && bankroll.profit > 0
+              ? 'up'
+              : bankroll && bankroll.profit < 0
+                ? 'down'
+                : null
+          }
+        />
+        <StatCard
+          title='ROI'
+          value={formatPercent(bankroll?.roi)}
+          subtitle={`Profit: ${formatMoney(bankroll?.profit)}`}
+          icon={Activity}
+          trend={
+            bankroll && bankroll.roi > 0
+              ? 'up'
+              : bankroll && bankroll.roi < 0
+                ? 'down'
+                : null
+          }
+        />
+        <StatCard
+          title='Win Rate'
+          value={formatPercent(bankroll?.win_rate)}
+          subtitle={`${bankroll?.wins ?? 0}W / ${bankroll?.losses ?? 0}L`}
+          icon={TrendingUp}
+          trend={getWinRateTrend()}
+        />
+        <StatCard
+          title='Total Bets'
+          value={bankroll?.total_bets ?? 0}
+          subtitle={`Pending: ${bankroll?.pending_bets ?? 0}`}
+          icon={Database}
+        />
+      </div>
+
+      {/* Per-Model Performance */}
+      {bankroll?.by_model && Object.keys(bankroll.by_model).length > 0 && (
+        <div className='card'>
+          <h3 className='mb-4 text-lg font-semibold'>Performance by Model</h3>
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
+            {Object.entries(bankroll.by_model).map(([market, stats]: [string, any]) => (
+              <div key={market} className='rounded-lg bg-slate-800/50 p-4'>
+                <p className='mb-2 font-medium capitalize'>{market}</p>
+                <div className='space-y-1 text-sm'>
+                  <p className='text-slate-400'>
+                    Bets:{' '}
+                    <span className='text-slate-300'>{stats.total_bets}</span>
+                  </p>
+                  <p className='text-slate-400'>
+                    Win Rate:{' '}
+                    <span className='text-slate-300'>
+                      {formatPercent(stats.win_rate)}
+                    </span>
+                  </p>
+                  <p className='text-slate-400'>
+                    ROI:{' '}
+                    <span
+                      className={
+                        stats.roi > 0
+                          ? 'text-emerald-400'
+                          : stats.roi < 0
+                            ? 'text-red-400'
+                            : 'text-slate-300'
+                      }
+                    >
+                      {formatPercent(stats.roi)}
+                    </span>
+                  </p>
+                  <p className='text-slate-400'>
+                    Profit:{' '}
+                    <span
+                      className={
+                        stats.profit > 0
+                          ? 'text-emerald-400'
+                          : stats.profit < 0
+                            ? 'text-red-400'
+                            : 'text-slate-300'
+                      }
+                    >
+                      {formatMoney(stats.profit)}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className='card'>
         <div className='mb-4 flex items-center justify-between'>
           <h3 className='text-lg font-semibold'>Bet History</h3>
+          <div className='flex items-center gap-2'>
+            <div className='relative'>
+              <Search size={16} className='absolute left-3 top-1/2 -translate-y-1/2 text-slate-400' />
+              <input
+                type='text'
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1); // Reset to page 1 when searching
+                }}
+                placeholder='Search bets...'
+                className='w-64 rounded-lg border border-slate-700 bg-slate-800/50 pl-9 pr-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none'
+              />
+            </div>
+          </div>
         </div>
 
         {/* Pagination at top */}
@@ -535,7 +802,7 @@ export function BettingTab({ api }: BettingTabProps) {
               ) : sortedBets.length === 0 ? (
                 <tr>
                   <td colSpan={7} className='py-8 text-center text-slate-400'>
-                    No bets found
+                    {searchQuery ? 'No bets match your search' : 'No bets found'}
                   </td>
                 </tr>
               ) : (
@@ -598,7 +865,11 @@ export function BettingTab({ api }: BettingTabProps) {
         {/* Per Page Selector and Count at bottom */}
         <div className='mt-4 flex items-center justify-between'>
           <div className='text-xs text-slate-400'>
-            Showing {bets.length > 0 ? (page - 1) * perPage + 1 : 0} - {Math.min(page * perPage, total)} of {total} bets
+            {searchQuery ? (
+              <>Showing {sortedBets.length} of {total} bets (search: "{searchQuery}")</>
+            ) : (
+              <>Showing {bets.length > 0 ? (page - 1) * perPage + 1 : 0} - {Math.min(page * perPage, total)} of {total} bets</>
+            )}
           </div>
           <div className='flex items-center gap-2'>
             <label className='text-xs text-slate-400'>Show:</label>

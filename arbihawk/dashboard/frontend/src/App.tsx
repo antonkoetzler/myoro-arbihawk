@@ -4,8 +4,8 @@ import { useToast } from './hooks/useToast';
 import { useWebSocketLogs } from './hooks/useWebSocketLogs';
 import { createApi } from './api/api';
 import { TAB_QUERIES } from './utils/constants';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { SystemTab } from './components/tabs/SystemTab';
-import { BetsTab } from './components/tabs/BetsTab';
 import { BettingTab } from './components/tabs/BettingTab';
 import { AutomationTab } from './components/tabs/AutomationTab';
 import { ModelsTab } from './components/tabs/ModelsTab';
@@ -13,7 +13,7 @@ import { LogsTab } from './components/tabs/LogsTab';
 import { TradingTab } from './components/tabs/TradingTab';
 import type { HealthResponse, Bankroll } from './types';
 
-type Tab = 'system' | 'bets' | 'betting' | 'trading' | 'automation' | 'models' | 'logs';
+type Tab = 'system' | 'betting' | 'trading' | 'automation' | 'models' | 'logs';
 
 /**
  * Main App component - orchestrates the dashboard
@@ -94,7 +94,6 @@ function App() {
 
   const tabs: Tab[] = [
     'system',
-    'bets',
     'betting',
     'trading',
     'automation',
@@ -111,7 +110,7 @@ function App() {
             <h1 className='bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-3xl font-bold text-transparent'>
               Arbihawk Dashboard
             </h1>
-            <p className='mt-1 text-slate-400'>Betting Prediction System</p>
+            <p className='mt-1 text-slate-400'>ML-Powered Prediction & Trading Platform</p>
           </div>
           <div className='flex items-center gap-4'>
             {/* Environment Selector */}
@@ -236,25 +235,26 @@ function App() {
       </nav>
 
       {/* Tab Content */}
-      {activeTab === 'system' && <SystemTab api={api} showToast={showToast} />}
-      {activeTab === 'bets' && <BetsTab api={api} bankroll={bankroll} />}
-      {activeTab === 'betting' && <BettingTab api={api} />}
-      {activeTab === 'trading' && <TradingTab api={api} />}
-      {activeTab === 'automation' && (
-        <AutomationTab 
-          api={api} 
-          showToast={showToast}
-          onSwitchToLogs={() => setActiveTab('logs')}
-        />
-      )}
-      {activeTab === 'models' && <ModelsTab api={api} />}
-      {activeTab === 'logs' && (
-        <LogsTab
-          wsLogs={wsLogs}
-          wsConnected={wsConnected}
-          clearLogs={clearLogs}
-        />
-      )}
+      <ErrorBoundary>
+        {activeTab === 'system' && <SystemTab api={api} showToast={showToast} />}
+        {activeTab === 'betting' && <BettingTab api={api} bankroll={bankroll} />}
+        {activeTab === 'trading' && <TradingTab api={api} />}
+        {activeTab === 'automation' && (
+          <AutomationTab 
+            api={api} 
+            showToast={showToast}
+            onSwitchToLogs={() => setActiveTab('logs')}
+          />
+        )}
+        {activeTab === 'models' && <ModelsTab api={api} />}
+        {activeTab === 'logs' && (
+          <LogsTab
+            wsLogs={wsLogs}
+            wsConnected={wsConnected}
+            clearLogs={clearLogs}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, Square, RefreshCw, TrendingUp, Settings, Zap, Wallet } from 'lucide-react';
+import { Play, Square, RefreshCw, TrendingUp, Settings, Zap, Wallet, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
 import type { createApi } from '../../api/api';
 import type {
@@ -8,6 +8,7 @@ import type {
   AutomationStatus,
   FakeMoneyConfig,
   ScraperWorkersConfig,
+  TradingStatus,
 } from '../../types';
 
 interface AutomationTabProps {
@@ -22,13 +23,40 @@ type Domain = 'betting' | 'trading';
  * Automation tab component - displays automation controls and configuration
  * Unified interface for both betting and trading automation
  */
+const AUTOMATION_DOMAIN_KEY = 'arbihawk_automation_domain';
+
 export function AutomationTab({
   api,
   showToast,
   onSwitchToLogs,
 }: AutomationTabProps) {
   const queryClient = useQueryClient();
-  const [selectedDomain, setSelectedDomain] = useState<Domain>('betting');
+  const [selectedDomain, setSelectedDomain] = useState<Domain>(() => {
+    const saved = localStorage.getItem(AUTOMATION_DOMAIN_KEY);
+    return (saved === 'betting' || saved === 'trading') ? saved : 'betting';
+  });
+  const [bettingMenuOpen, setBettingMenuOpen] = useState(false);
+  const [tradingMenuOpen, setTradingMenuOpen] = useState(false);
+  const bettingMenuRef = useRef<HTMLDivElement>(null);
+  const tradingMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem(AUTOMATION_DOMAIN_KEY, selectedDomain);
+  }, [selectedDomain]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bettingMenuRef.current && !bettingMenuRef.current.contains(event.target as Node)) {
+        setBettingMenuOpen(false);
+      }
+      if (tradingMenuRef.current && !tradingMenuRef.current.contains(event.target as Node)) {
+        setTradingMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const { data: status } = useQuery<AutomationStatus>({
     queryKey: ['status'],
@@ -51,7 +79,7 @@ export function AutomationTab({
     retry: false,
   });
 
-  const { data: tradingStatus } = useQuery({
+  const { data: tradingStatus } = useQuery<TradingStatus>({
     queryKey: ['trading-status'],
     queryFn: () => api.getTradingStatus(),
     refetchInterval: 30000,
@@ -191,6 +219,42 @@ export function AutomationTab({
     },
   });
 
+  const fullTradingCycleMutation = useMutation({
+    mutationFn: api.triggerFullTradingCycle,
+    onSuccess: () => {
+      if (onSwitchToLogs) onSwitchToLogs();
+      void queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+      void queryClient.invalidateQueries({ queryKey: ['trading-portfolio'] });
+      void queryClient.invalidateQueries({ queryKey: ['trading-positions'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to trigger full trading cycle', 'error');
+    },
+  });
+
+  const startTradingDaemonMutation = useMutation({
+    mutationFn: () => api.startTradingDaemon(3600), // 1 hour default
+    onSuccess: () => {
+      if (onSwitchToLogs) onSwitchToLogs();
+      showToast('Trading daemon started', 'success');
+      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to start trading daemon', 'error');
+    },
+  });
+
+  const stopTradingDaemonMutation = useMutation({
+    mutationFn: api.stopTradingDaemon,
+    onSuccess: () => {
+      showToast('Trading daemon stop signal sent', 'success');
+      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    },
+    onError: (error: Error) => {
+      showToast(error.message ?? 'Failed to stop trading daemon', 'error');
+    },
+  });
+
   const initializePortfolioMutation = useMutation({
     mutationFn: api.initializeTradingPortfolio,
     onSuccess: () => {
@@ -202,64 +266,61 @@ export function AutomationTab({
     },
   });
 
-  const isTaskRunning = !!status?.current_task;
-  const taskButtonTooltip = isTaskRunning
+  const isBettingTaskRunning = !!status?.current_task;
+  const isTradingTaskRunning = tradingStatus?.current_task ? true : false;
+  const taskButtonTooltip = isBettingTaskRunning || isTradingTaskRunning
     ? 'You can only run one task at a time'
     : '';
-  const stopButtonTooltip = !isTaskRunning
+  const stopButtonTooltip = !isBettingTaskRunning && !isTradingTaskRunning
     ? 'No task is currently running'
     : '';
 
   return (
     <div className='space-y-6'>
-      <div className='card'>
+      {/* Domain Selector - Prominent at top */}
+      <div className='flex items-center gap-4'>
+        <button
+          onClick={() => setSelectedDomain('betting')}
+          className={`flex-1 px-6 py-3 text-sm font-semibold rounded-lg transition-all ${selectedDomain === 'betting'
+              ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
+              : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-300'
+            }`}
+          type='button'
+        >
+          Betting Automation
+        </button>
+        <button
+          onClick={() => setSelectedDomain('trading')}
+          className={`flex-1 px-6 py-3 text-sm font-semibold rounded-lg transition-all ${selectedDomain === 'trading'
+              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
+              : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-300'
+            }`}
+          type='button'
+        >
+          Trading Automation
+        </button>
+      </div>
+
+      <div className='card relative'>
         <div className='mb-4 flex items-center justify-between'>
           <h3 className='text-lg font-semibold'>Automation Control</h3>
-          <div className='flex items-center gap-3'>
-            {/* Domain Selector */}
-            <div className='flex items-center gap-1 rounded-lg bg-slate-800/50 p-1'>
-              <button
-                onClick={() => setSelectedDomain('betting')}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  selectedDomain === 'betting'
-                    ? 'bg-sky-500/20 text-sky-400'
-                    : 'text-slate-400 hover:text-slate-300'
-                }`}
-                type='button'
-              >
-                Betting
-              </button>
-              <button
-                onClick={() => setSelectedDomain('trading')}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  selectedDomain === 'trading'
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'text-slate-400 hover:text-slate-300'
-                }`}
-                type='button'
-              >
-                Trading
-              </button>
-            </div>
-            <div
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm ${
-                selectedDomain === 'betting'
-                  ? status?.running
-                    ? 'bg-sky-500/20 text-sky-400'
-                    : 'bg-slate-700 text-slate-400'
-                  : tradingStatus?.enabled
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'bg-slate-700 text-slate-400'
-              }`}
-            >
-              {selectedDomain === 'betting'
+          <div
+            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm ${selectedDomain === 'betting'
                 ? status?.running
-                  ? 'Running'
-                  : 'Stopped'
+                  ? 'bg-sky-500/20 text-sky-400'
+                  : 'bg-slate-700 text-slate-400'
                 : tradingStatus?.enabled
-                  ? 'Enabled'
-                  : 'Disabled'}
-            </div>
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-slate-700 text-slate-400'
+              }`}
+          >
+            {selectedDomain === 'betting'
+              ? status?.running
+                ? 'Running'
+                : 'Stopped'
+              : tradingStatus?.enabled
+                ? 'Enabled'
+                : 'Disabled'}
           </div>
         </div>
 
@@ -332,16 +393,23 @@ export function AutomationTab({
               )}
             </div>
             <div className='rounded-lg bg-slate-800/50 p-4'>
-              <p className='text-sm text-slate-400'>API Keys</p>
-              <div className='mt-1 flex gap-2 text-xs'>
-                <span className={`${tradingStatus?.api_keys_configured?.alpha_vantage ? 'text-emerald-400' : 'text-red-400'}`}>
-                  Stocks
-                </span>
-                <span className='text-slate-500'>/</span>
-                <span className={`${tradingStatus?.api_keys_configured?.coingecko ? 'text-emerald-400' : 'text-red-400'}`}>
-                  Crypto
-                </span>
-              </div>
+              <Tooltip text='API key configuration status. Green = configured, Red = missing'>
+                <div className='cursor-help'>
+                  <p className='text-sm text-slate-400 flex items-center gap-1'>
+                    API Keys Status
+                    <span className='text-slate-500 text-xs'>(?)</span>
+                  </p>
+                  <div className='mt-1 flex gap-2 text-xs'>
+                    <span className={`${tradingStatus?.api_keys_configured?.alpha_vantage ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {tradingStatus?.api_keys_configured?.alpha_vantage ? '✓' : '✗'} Stocks
+                    </span>
+                    <span className='text-slate-500'>/</span>
+                    <span className={`${tradingStatus?.api_keys_configured?.coingecko ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {tradingStatus?.api_keys_configured?.coingecko ? '✓' : '✗'} Crypto
+                    </span>
+                  </div>
+                </div>
+              </Tooltip>
             </div>
             <div className='rounded-lg bg-slate-800/50 p-4'>
               <p className='text-sm text-slate-400'>Watchlist</p>
@@ -356,126 +424,232 @@ export function AutomationTab({
 
         {/* Domain-specific controls */}
         {selectedDomain === 'betting' ? (
-          <div className='flex flex-wrap gap-3'>
-            <Tooltip text={taskButtonTooltip}>
-              <button
-                onClick={triggerCollectionWithWorkers}
-                disabled={triggerMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Play size={16} /> Run Collection
-              </button>
-            </Tooltip>
-            <Tooltip text={taskButtonTooltip}>
-              <button
-                onClick={() => {
-                  if (onSwitchToLogs) onSwitchToLogs();
-                  triggerMutation.mutate('train');
-                }}
-                disabled={triggerMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <RefreshCw size={16} /> Run Training
-              </button>
-            </Tooltip>
-            <Tooltip text={taskButtonTooltip}>
-              <button
-                onClick={() => {
-                  if (onSwitchToLogs) onSwitchToLogs();
-                  triggerMutation.mutate('betting');
-                }}
-                disabled={triggerMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <TrendingUp size={16} /> Place Bets
-              </button>
-            </Tooltip>
-            <Tooltip
-              text={
-                taskButtonTooltip ||
-                'Run collection, training, and betting in sequence'
-              }
-            >
-              <button
-                onClick={triggerFullRunWithWorkers}
-                disabled={triggerMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Play size={16} /> Full Run
-              </button>
-            </Tooltip>
-            <Tooltip text='Start daemon mode to run full cycles continuously'>
-              <button
-                onClick={() => {
-                  if (onSwitchToLogs) onSwitchToLogs();
-                  startDaemonMutation.mutate();
-                }}
-                disabled={startDaemonMutation.isPending || status?.running}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Play size={16} /> Run Daemon
-              </button>
-            </Tooltip>
-            <Tooltip text={stopButtonTooltip}>
-              <button
-                onClick={() => stopMutation.mutate()}
-                disabled={!isTaskRunning || stopMutation.isPending}
-                className='btn-danger ml-auto flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Square size={16} /> Stop
-              </button>
-            </Tooltip>
+          <div className='space-y-3' ref={bettingMenuRef}>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex-1'>
+                <button
+                  onClick={() => setBettingMenuOpen(!bettingMenuOpen)}
+                  disabled={triggerMutation.isPending || isBettingTaskRunning}
+                  className='btn-primary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                  type='button'
+                >
+                  <Play size={16} /> Actions
+                  <ChevronDown size={16} className={`transition-transform ${bettingMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+              <Tooltip text={stopButtonTooltip}>
+                <button
+                  onClick={() => stopMutation.mutate()}
+                  disabled={!isBettingTaskRunning || stopMutation.isPending}
+                  className='btn-danger flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                  type='button'
+                >
+                  <Square size={16} /> Stop
+                </button>
+              </Tooltip>
+            </div>
+            {bettingMenuOpen && (
+              <div className='rounded-lg border border-slate-700 bg-slate-800/50 p-1'>
+                <Tooltip text={taskButtonTooltip}>
+                  <button
+                    onClick={() => {
+                      triggerCollectionWithWorkers();
+                      setBettingMenuOpen(false);
+                    }}
+                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Play size={16} /> Run Collection
+                  </button>
+                </Tooltip>
+                <Tooltip text={taskButtonTooltip}>
+                  <button
+                    onClick={() => {
+                      if (onSwitchToLogs) onSwitchToLogs();
+                      triggerMutation.mutate('train');
+                      setBettingMenuOpen(false);
+                    }}
+                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <RefreshCw size={16} /> Run Training
+                  </button>
+                </Tooltip>
+                <Tooltip text={taskButtonTooltip}>
+                  <button
+                    onClick={() => {
+                      if (onSwitchToLogs) onSwitchToLogs();
+                      triggerMutation.mutate('betting');
+                      setBettingMenuOpen(false);
+                    }}
+                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <TrendingUp size={16} /> Place Bets
+                  </button>
+                </Tooltip>
+                <div className='my-1 border-t border-slate-700' />
+                <Tooltip text={taskButtonTooltip || 'Run collection, training, and betting in sequence'}>
+                  <button
+                    onClick={() => {
+                      triggerFullRunWithWorkers();
+                      setBettingMenuOpen(false);
+                    }}
+                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Play size={16} /> Full Run
+                  </button>
+                </Tooltip>
+                <Tooltip text='Start daemon mode to run full cycles continuously'>
+                  <button
+                    onClick={() => {
+                      if (onSwitchToLogs) onSwitchToLogs();
+                      startDaemonMutation.mutate();
+                      setBettingMenuOpen(false);
+                    }}
+                    disabled={startDaemonMutation.isPending || status?.running}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Play size={16} /> Run Daemon
+                  </button>
+                </Tooltip>
+              </div>
+            )}
           </div>
         ) : (
-          <div className='flex flex-wrap gap-3'>
-            <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
-              <button
-                onClick={() => tradingCollectionMutation.mutate()}
-                disabled={!tradingStatus?.enabled || tradingCollectionMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <RefreshCw size={16} /> Collect Data
-              </button>
-            </Tooltip>
-            <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
-              <button
-                onClick={() => tradingTrainingMutation.mutate()}
-                disabled={!tradingStatus?.enabled || tradingTrainingMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Zap size={16} /> Train Models
-              </button>
-            </Tooltip>
-            <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
-              <button
-                onClick={() => tradingCycleMutation.mutate()}
-                disabled={!tradingStatus?.enabled || tradingCycleMutation.isPending || isTaskRunning}
-                className='btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Play size={16} /> Run Trading Cycle
-              </button>
-            </Tooltip>
-            <Tooltip text='Initialize portfolio with starting balance'>
-              <button
-                onClick={() => initializePortfolioMutation.mutate()}
-                disabled={initializePortfolioMutation.isPending}
-                className='btn-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
-                type='button'
-              >
-                <Wallet size={16} /> Initialize Portfolio
-              </button>
-            </Tooltip>
+          <div className='space-y-3' ref={tradingMenuRef}>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex-1'>
+                <button
+                  onClick={() => setTradingMenuOpen(!tradingMenuOpen)}
+                  disabled={!tradingStatus?.enabled}
+                  className='btn-primary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                  type='button'
+                >
+                  <Play size={16} /> Actions
+                  <ChevronDown size={16} className={`transition-transform ${tradingMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+              <Tooltip text={stopButtonTooltip}>
+                <button
+                  onClick={() => stopMutation.mutate()}
+                  disabled={!isTradingTaskRunning || stopMutation.isPending}
+                  className='btn-danger flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
+                  type='button'
+                >
+                  <Square size={16} /> Stop
+                </button>
+              </Tooltip>
+            </div>
+            {tradingMenuOpen && (
+              <div className='rounded-lg border border-slate-700 bg-slate-800/50 p-1'>
+                <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+                  <button
+                    onClick={() => {
+                      tradingCollectionMutation.mutate();
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={!tradingStatus?.enabled || tradingCollectionMutation.isPending || isTradingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <RefreshCw size={16} /> Collect Data
+                  </button>
+                </Tooltip>
+                <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+                  <button
+                    onClick={() => {
+                      tradingTrainingMutation.mutate();
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={!tradingStatus?.enabled || tradingTrainingMutation.isPending || isTradingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Zap size={16} /> Train Models
+                  </button>
+                </Tooltip>
+                <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+                  <button
+                    onClick={() => {
+                      if (onSwitchToLogs) onSwitchToLogs();
+                      tradingCycleMutation.mutate();
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={!tradingStatus?.enabled || tradingCycleMutation.isPending || isTradingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Play size={16} /> Run Trading Cycle
+                  </button>
+                </Tooltip>
+                <div className='my-1 border-t border-slate-700' />
+                <Tooltip text={tradingStatus?.enabled ? 'Run collection, training, and cycle in sequence' : 'Trading is disabled in configuration'} className='w-full'>
+                  <button
+                    onClick={() => {
+                      if (onSwitchToLogs) onSwitchToLogs();
+                      fullTradingCycleMutation.mutate();
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={!tradingStatus?.enabled || fullTradingCycleMutation.isPending || isTradingTaskRunning}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Play size={16} /> Full Run
+                  </button>
+                </Tooltip>
+                <div className='my-1 border-t border-slate-700' />
+                <Tooltip text={tradingStatus?.enabled ? 'Start daemon mode to run full cycles continuously (every hour)' : 'Trading is disabled in configuration'} className='w-full'>
+                  <button
+                    onClick={() => {
+                      if (onSwitchToLogs) onSwitchToLogs();
+                      startTradingDaemonMutation.mutate();
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={!tradingStatus?.enabled || startTradingDaemonMutation.isPending || status?.trading_daemon_running}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Play size={16} /> Start Daemon
+                  </button>
+                </Tooltip>
+                <Tooltip text='Stop trading daemon mode' className='w-full'>
+                  <button
+                    onClick={() => {
+                      stopTradingDaemonMutation.mutate();
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={stopTradingDaemonMutation.isPending || !status?.trading_daemon_running}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Square size={16} /> Stop Daemon
+                  </button>
+                </Tooltip>
+                <div className='my-1 border-t border-slate-700' />
+                <Tooltip text='Initialize portfolio with starting balance' className='w-full'>
+                  <button
+                    onClick={() => {
+                      initializePortfolioMutation.mutate(undefined);
+                      setTradingMenuOpen(false);
+                    }}
+                    disabled={initializePortfolioMutation.isPending}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Wallet size={16} /> Initialize Portfolio
+                  </button>
+                </Tooltip>
+              </div>
+            )}
             {!tradingStatus?.enabled && (
-              <p className='text-sm text-slate-500 mt-2'>
+              <p className='text-sm text-slate-500'>
                 Enable trading in config.json to use trading automation
               </p>
             )}
@@ -578,11 +752,10 @@ export function AutomationTab({
                   })
                 }
                 disabled={updateFakeMoneyMutation.isPending}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                  fakeMoneyConfig.auto_bet_after_training
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${fakeMoneyConfig.auto_bet_after_training
                     ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
                     : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                } disabled:opacity-50`}
+                  } disabled:opacity-50`}
                 type='button'
               >
                 {fakeMoneyConfig.auto_bet_after_training

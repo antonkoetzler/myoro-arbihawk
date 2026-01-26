@@ -168,9 +168,12 @@ class BettingPredictor(BasePredictor):
                 }
                 # Update model with best hyperparameters (ensure required params are included)
                 model_params = best_params.copy()
-                # Get number of classes (need to encode labels first to know this)
+                # Get number of classes (encode labels first to know this)
                 y_encoded_temp = self.label_encoder.fit_transform(labels)
                 n_classes = len(self.label_encoder.classes_)
+                # Ensure num_class is at least 1
+                if n_classes < 1:
+                    raise ValueError(f"Invalid number of classes: {n_classes}. Must be at least 1.")
                 model_params.update({
                     'random_state': 42,
                     'objective': 'multi:softprob',  # Required for multiclass classification
@@ -182,9 +185,26 @@ class BettingPredictor(BasePredictor):
                 # Tuning was skipped or failed, use defaults
                 self.hyperparameters = None
                 self.tuning_metrics = {}
+                # Ensure default model has num_class set if we can determine it
+                # (will be set properly after encoding labels)
         
-        # Encode labels
-        y_encoded = self.label_encoder.fit_transform(labels)
+        # Encode labels (reuse encoder if already fit, otherwise fit it)
+        if not hasattr(self.label_encoder, 'classes_') or len(self.label_encoder.classes_) == 0:
+            y_encoded = self.label_encoder.fit_transform(labels)
+        else:
+            # Encoder already fit, just transform
+            y_encoded = self.label_encoder.transform(labels)
+        
+        # Ensure model has num_class set (for default model if tuning was skipped)
+        if not hasattr(self.model, 'get_params') or self.model.get_params().get('num_class') is None:
+            n_classes = len(self.label_encoder.classes_)
+            if n_classes >= 1:
+                # Update model params to include num_class
+                model_params = self.model.get_params()
+                model_params['num_class'] = n_classes
+                model_params['objective'] = 'multi:softprob'
+                model_params['eval_metric'] = 'mlogloss'
+                self.model = XGBClassifier(**model_params)
         
         # Create temporal validation split (most recent data for betting evaluation)
         # This must happen before calibration split to ensure proper temporal ordering
@@ -314,13 +334,48 @@ class BettingPredictor(BasePredictor):
         cv_folds = min(5, max(2, n_samples // 10))  # At least 10 samples per fold
         
         if n_samples >= 10:
-            scores = cross_val_score(self.model, X_train, y_train_encoded, cv=cv_folds, scoring='accuracy')
-            cv_mean = scores.mean()
-            cv_std = scores.std()
-            print(f"Cross-validation accuracy ({cv_folds}-fold): {cv_mean:.3f} (+/- {cv_std * 2:.3f})")
-            self.cv_score = cv_mean
-            self.cv_std = cv_std
-            self.cv_folds = cv_folds
+            # Use a custom scorer that handles predictions correctly
+            from sklearn.metrics import accuracy_score, make_scorer
+            
+            def accuracy_scorer(y_true, y_pred):
+                """Custom accuracy scorer that ensures predictions are class labels."""
+                # Ensure y_pred are class labels (not probabilities)
+                if y_pred.ndim > 1:
+                    # If probabilities, convert to class labels
+                    y_pred = np.argmax(y_pred, axis=1)
+                # Ensure both are 1D arrays
+                y_true = np.asarray(y_true).ravel()
+                y_pred = np.asarray(y_pred).ravel()
+                return accuracy_score(y_true, y_pred)
+            
+            custom_scorer = make_scorer(accuracy_scorer)
+            
+            try:
+                scores = cross_val_score(self.model, X_train, y_train_encoded, cv=cv_folds, scoring=custom_scorer)
+                # Filter out NaN scores (from failed folds)
+                scores = scores[~np.isnan(scores)]
+                if len(scores) > 0:
+                    cv_mean = scores.mean()
+                    cv_std = scores.std()
+                    print(f"Cross-validation accuracy ({cv_folds}-fold): {cv_mean:.3f} (+/- {cv_std * 2:.3f})")
+                    self.cv_score = cv_mean
+                    self.cv_std = cv_std
+                    self.cv_folds = len(scores)
+                else:
+                    # All folds failed
+                    print(f"Warning: All cross-validation folds failed. Using default score.")
+                    self.cv_score = 0.5
+                    self.cv_std = 0.0
+                    self.cv_folds = 0
+            except Exception as e:
+                # If CV fails, log warning and use default
+                if log_callback:
+                    log_callback("warning", f"Cross-validation failed: {e}. Using default score.")
+                else:
+                    print(f"Warning: Cross-validation failed: {e}. Using default score.")
+                self.cv_score = 0.5
+                self.cv_std = 0.0
+                self.cv_folds = 0
         else:
             print(f"Warning: Too few samples ({n_samples}) for cross-validation. Model trained on all data.")
             # Default score when CV not possible (50% accuracy baseline)

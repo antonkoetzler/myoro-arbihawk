@@ -215,6 +215,80 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
             if betting_metrics:
                 performance_metrics['betting_metrics'] = betting_metrics
             
+            # Check profitability before activating
+            profitability_config = config.MODEL_VERSIONING_CONFIG.get("profitability_selection", {})
+            should_activate = True
+            activation_reason = "Model meets profitability criteria"
+            
+            # Check if profitability selection is enabled
+            if profitability_config.get("enabled", True):
+                # If betting_metrics is empty, warn but still activate (evaluation may have failed)
+                if not betting_metrics or not isinstance(betting_metrics, dict):
+                    if log_callback:
+                        log_callback("warning", "Profitability checking enabled but no betting metrics available. Model will be activated.")
+                    else:
+                        print_warning("Profitability checking enabled but no betting metrics available. Model will be activated.")
+                elif 'roi' in betting_metrics and 'total_bets' in betting_metrics:
+                    # We have valid betting metrics, check profitability
+                    try:
+                        min_roi = float(profitability_config.get("min_roi", 0.0))
+                        min_bets = int(profitability_config.get("min_bets", 10))
+                        save_unprofitable = bool(profitability_config.get("save_unprofitable", True))
+                        
+                        roi = float(betting_metrics.get('roi', 0.0))
+                        total_bets = int(betting_metrics.get('total_bets', 0))
+                        
+                        # Validate min_bets is positive
+                        if min_bets < 0:
+                            if log_callback:
+                                log_callback("warning", f"Invalid min_bets ({min_bets}), using default 10")
+                            else:
+                                print_warning(f"Invalid min_bets ({min_bets}), using default 10")
+                            min_bets = 10
+                        
+                        # Check if model meets profitability criteria
+                        if total_bets < min_bets:
+                            should_activate = False
+                            activation_reason = f"Insufficient bets for evaluation ({total_bets} < {min_bets})"
+                        elif roi < min_roi:
+                            should_activate = False
+                            activation_reason = f"ROI below threshold ({roi:.2%} < {min_roi:.2%})"
+                    except (ValueError, TypeError) as e:
+                        # If config values are invalid, log warning and activate model
+                        if log_callback:
+                            log_callback("warning", f"Invalid profitability config values: {e}. Model will be activated.")
+                        else:
+                            print_warning(f"Invalid profitability config values: {e}. Model will be activated.")
+                        should_activate = True
+                        activation_reason = "Invalid profitability config, defaulting to activation"
+                    
+                    if not should_activate:
+                        if save_unprofitable:
+                            if log_callback:
+                                log_callback("warning", f"Model saved but not activated: {activation_reason}")
+                            else:
+                                print_warning(f"Model saved but not activated: {activation_reason}")
+                        else:
+                            if log_callback:
+                                log_callback("warning", f"Model not saved to versioning: {activation_reason}")
+                            else:
+                                print_warning(f"Model not saved to versioning: {activation_reason}")
+                            # Skip saving to versioning if not saving unprofitable
+                            # Note: Model file is already saved, but not tracked in versioning
+                            metrics["markets"][market] = {
+                                "samples": len(X),
+                                "features": len(X.columns),
+                                "model_path": str(model_path),
+                                "cv_score": cv_score,
+                                "label_distribution": y.value_counts().to_dict(),
+                                "calibration_metrics": calibration_metrics,
+                                "betting_metrics": betting_metrics,
+                                "not_activated": True,
+                                "activation_reason": activation_reason
+                            }
+                            metrics["total_samples"] += len(X)
+                            continue
+            
             version_id = version_manager.save_version(
                 domain='betting',
                 market=market,
@@ -222,15 +296,18 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
                 training_samples=len(X),
                 cv_score=cv_score,
                 performance_metrics=performance_metrics,
-                activate=True
+                activate=should_activate
             )
-            if log_callback:
-                log_callback("info", f"Model version {version_id} saved and activated")
+            if should_activate:
+                if log_callback:
+                    log_callback("info", f"Model version {version_id} saved and activated")
+                else:
+                    print_info(f"Model version {version_id} saved and activated")
             else:
-                print_info(f"Model version {version_id} saved and activated")
-            
-            # Get calibration metrics if available
-            calibration_metrics = getattr(predictor, 'calibration_metrics', {})
+                if log_callback:
+                    log_callback("info", f"Model version {version_id} saved (not activated: {activation_reason})")
+                else:
+                    print_info(f"Model version {version_id} saved (not activated: {activation_reason})")
             
             metrics["markets"][market] = {
                 "samples": len(X),

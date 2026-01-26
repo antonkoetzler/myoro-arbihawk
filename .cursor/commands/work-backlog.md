@@ -15,7 +15,7 @@
 
 4. You're going to tell which task(s) you've done, give me a brief rundown of what will need to be changed
 5. If you have any questions regarding the task, you'll ask me before you get started
-6. After you've asked me ALL of your questions, concerns, suggestions, doubts, etc, you'll ask me if we should proceed
+6. After you've asked me ALL of your questions, concerns, suggestions, doubts, etc, you'll ask me if we should proceed. YOU CANNOT CODE UNLESS I GIVE YOU THE APPROVAL TO START
 7. If I say you can proceed, you will the implement the task from start to finish
 
 - Make sure you obey all rules in `.cursor/rules`

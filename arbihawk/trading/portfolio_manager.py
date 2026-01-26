@@ -137,14 +137,15 @@ class PortfolioManager:
         positions_value = 0.0
         for _, pos in positions.iterrows():
             quantity = float(pos['quantity'])
-            current_price = float(pos.get('current_price', pos['entry_price']))
-            direction = pos['direction']
+            entry_price = float(pos.get('avg_entry_price', pos.get('entry_price', 0)))
+            current_price = float(pos.get('current_price', entry_price))
+            direction = pos.get('direction', 'long')
             
             if direction == 'long':
                 positions_value += quantity * current_price
             else:
                 # For short positions, value is (2 * entry - current) * quantity
-                entry_price = float(pos['entry_price'])
+                entry_price = float(pos.get('avg_entry_price', pos.get('entry_price', 0)))
                 positions_value += (2 * entry_price - current_price) * quantity
         
         return cash + positions_value
@@ -170,9 +171,9 @@ class PortfolioManager:
         if not positions.empty:
             for _, pos in positions.iterrows():
                 quantity = float(pos['quantity'])
-                entry_price = float(pos['entry_price'])
+                entry_price = float(pos.get('avg_entry_price', pos.get('entry_price', 0)))
                 current_price = float(pos.get('current_price', entry_price))
-                direction = pos['direction']
+                direction = pos.get('direction', 'long')
                 
                 if direction == 'long':
                     unrealized_pnl += (current_price - entry_price) * quantity
@@ -258,8 +259,15 @@ class PortfolioManager:
         if position_value <= 0 or current_price <= 0:
             return 0.0
         
-        # Calculate quantity
+        # Calculate quantity and ensure final position value doesn't exceed max
         quantity = position_value / current_price
+        
+        # Recalculate actual position value from quantity to account for rounding
+        actual_position_value = quantity * current_price
+        
+        # If actual value exceeds max, reduce quantity
+        if actual_position_value > max_position_value:
+            quantity = (max_position_value / current_price) * 0.999  # 0.999 to ensure we're under the limit
         
         return quantity
     

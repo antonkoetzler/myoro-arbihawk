@@ -310,8 +310,13 @@ class StockIngestionService:
         Returns:
             Dict with price data or None on failure
         """
-        if not YFINANCE_AVAILABLE:
-            self._log("error", "yfinance not installed - cannot use scraping fallback")
+        # Check at runtime in case module was imported before yfinance was installed
+        # Always import fresh to avoid stale module state
+        try:
+            import importlib
+            yf = importlib.import_module('yfinance')
+        except (ImportError, ModuleNotFoundError) as e:
+            self._log("error", f"yfinance not installed - cannot use scraping fallback: {e}")
             return None
         
         try:
@@ -552,8 +557,8 @@ class StockIngestionService:
         # Check API key
         has_api_key = self.check_api_key()
         if not has_api_key and not self.scraping_fallback_enabled:
-            self._log("error", "No API key and scraping fallback disabled")
-            return {"success": False, "collected": 0, "errors": ["No data source available"]}
+            self._log("error", "No Alpha Vantage API key configured and scraping fallback disabled. Add API key to config/config.json → trading.api_keys.alpha_vantage or enable scraping_fallback.enabled")
+            return {"success": False, "collected": 0, "errors": ["No data source available - configure API key or enable scraping fallback"]}
         
         self._log("info", f"Starting stock collection for {len(symbols)} symbols")
         
@@ -575,11 +580,11 @@ class StockIngestionService:
             if result["success"]:
                 results["collected"] += 1
                 results["total_prices"] += result["prices_ingested"]
-                self._log("success", f"✓ {symbol}: {result['prices_ingested']} prices ({result['source']})")
+                self._log("success", f"[OK] {symbol}: {result['prices_ingested']} prices ({result['source']})")
             else:
                 results["failed"] += 1
                 results["errors"].append(f"{symbol}: {result['error']}")
-                self._log("error", f"✗ {symbol}: {result['error']}")
+                self._log("error", f"[FAIL] {symbol}: {result['error']}")
         
         if results["failed"] > 0:
             results["success"] = results["collected"] > 0  # Partial success is still success

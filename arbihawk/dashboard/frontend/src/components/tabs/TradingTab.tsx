@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
-  Wallet, TrendingUp, TrendingDown, Activity, Target, 
+  Wallet, TrendingUp, TrendingDown, Activity, Target,
   DollarSign, BarChart3, Zap, Plus, X
 } from 'lucide-react';
 import type { createApi } from '../../api/api';
@@ -25,7 +25,7 @@ export function TradingTab({ api }: TradingTabProps) {
   });
 
   // Fetch portfolio
-  const { data: portfolio, refetch: refetchPortfolio } = useQuery({
+  const { data: portfolio } = useQuery({
     queryKey: ['trading-portfolio'],
     queryFn: () => api.getTradingPortfolio(),
     refetchInterval: 10000,
@@ -33,7 +33,7 @@ export function TradingTab({ api }: TradingTabProps) {
   });
 
   // Fetch positions
-  const { data: positionsData, refetch: refetchPositions } = useQuery({
+  const { data: positionsData } = useQuery({
     queryKey: ['trading-positions'],
     queryFn: () => api.getTradingPositions(),
     refetchInterval: 10000,
@@ -49,7 +49,7 @@ export function TradingTab({ api }: TradingTabProps) {
   });
 
   // Fetch signals
-  const { data: signalsData, refetch: refetchSignals } = useQuery({
+  const { data: signalsData } = useQuery({
     queryKey: ['trading-signals'],
     queryFn: () => api.getTradingSignals(10),
     refetchInterval: 30000,
@@ -369,25 +369,125 @@ export function TradingTab({ api }: TradingTabProps) {
       </div>
 
       {/* Watchlist Info */}
-      <div className="bg-zinc-900 rounded-xl p-4">
+      <div className="card">
         <h3 className="text-lg font-semibold mb-4">Watchlist</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <div className="text-sm text-slate-400 mb-2">Stocks ({status?.watchlist?.stocks?.length ?? 0})</div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-slate-400">Stocks ({status?.watchlist?.stocks?.length ?? 0})</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newStockSymbol}
+                  onChange={(e) => setNewStockSymbol(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newStockSymbol.trim()) {
+                      const current = status?.watchlist?.stocks ?? [];
+                      if (!current.includes(newStockSymbol.trim())) {
+                        updateWatchlistMutation.mutate({
+                          stocks: [...current, newStockSymbol.trim()]
+                        });
+                      }
+                    }
+                  }}
+                  placeholder="Add symbol (e.g., AAPL)"
+                  className="bg-slate-800/50 border border-slate-700 rounded px-2 py-1 text-sm w-32 focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  onClick={() => {
+                    if (newStockSymbol.trim()) {
+                      const current = status?.watchlist?.stocks ?? [];
+                      if (!current.includes(newStockSymbol.trim())) {
+                        updateWatchlistMutation.mutate({
+                          stocks: [...current, newStockSymbol.trim()]
+                        });
+                      }
+                    }
+                  }}
+                  disabled={!newStockSymbol.trim() || updateWatchlistMutation.isPending}
+                  className="btn-primary flex items-center gap-1 px-2 py-1 text-xs disabled:opacity-50"
+                  type="button"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {status?.watchlist?.stocks?.map((symbol) => (
-                <span key={symbol} className="bg-zinc-800 px-2 py-1 rounded text-sm">
+                <span key={symbol} className="bg-slate-800/50 px-3 py-1 rounded text-sm flex items-center gap-2">
                   {symbol}
+                  <button
+                    onClick={() => {
+                      const current = status?.watchlist?.stocks ?? [];
+                      updateWatchlistMutation.mutate({
+                        stocks: current.filter(s => s !== symbol)
+                      });
+                    }}
+                    className="hover:text-red-400 transition-colors"
+                    type="button"
+                  >
+                    <X size={12} />
+                  </button>
                 </span>
               ))}
             </div>
           </div>
           <div>
-            <div className="text-sm text-slate-400 mb-2">Crypto ({status?.watchlist?.crypto?.length ?? 0})</div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-slate-400">Crypto ({status?.watchlist?.crypto?.length ?? 0})</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newCryptoSymbol}
+                  onChange={(e) => setNewCryptoSymbol(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newCryptoSymbol.trim()) {
+                      const current = status?.watchlist?.crypto ?? [];
+                      if (!current.includes(newCryptoSymbol.trim())) {
+                        updateWatchlistMutation.mutate({
+                          crypto: [...current, newCryptoSymbol.trim()]
+                        });
+                      }
+                    }
+                  }}
+                  placeholder="Add symbol (e.g., BTC-USD)"
+                  className="bg-slate-800/50 border border-slate-700 rounded px-2 py-1 text-sm w-32 focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  onClick={() => {
+                    if (newCryptoSymbol.trim()) {
+                      const current = status?.watchlist?.crypto ?? [];
+                      if (!current.includes(newCryptoSymbol.trim())) {
+                        updateWatchlistMutation.mutate({
+                          crypto: [...current, newCryptoSymbol.trim()]
+                        });
+                      }
+                    }
+                  }}
+                  disabled={!newCryptoSymbol.trim() || updateWatchlistMutation.isPending}
+                  className="btn-primary flex items-center gap-1 px-2 py-1 text-xs disabled:opacity-50"
+                  type="button"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {status?.watchlist?.crypto?.map((symbol) => (
-                <span key={symbol} className="bg-zinc-800 px-2 py-1 rounded text-sm">
+                <span key={symbol} className="bg-slate-800/50 px-3 py-1 rounded text-sm flex items-center gap-2">
                   {symbol}
+                  <button
+                    onClick={() => {
+                      const current = status?.watchlist?.crypto ?? [];
+                      updateWatchlistMutation.mutate({
+                        crypto: current.filter(s => s !== symbol)
+                      });
+                    }}
+                    className="hover:text-red-400 transition-colors"
+                    type="button"
+                  >
+                    <X size={12} />
+                  </button>
                 </span>
               ))}
             </div>

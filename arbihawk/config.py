@@ -95,7 +95,13 @@ MODEL_VERSIONING_CONFIG = _automation_config.get("model_versioning", {
     "auto_rollback_enabled": True,
     "rollback_threshold": -10.0,
     "rollback_evaluation_bets": 50,
-    "max_versions_to_keep": 10
+    "max_versions_to_keep": 10,
+    "profitability_selection": {
+        "enabled": True,
+        "min_roi": 0.0,  # Minimum ROI to activate (0% = break even)
+        "min_bets": 10,  # Minimum number of bets for evaluation to be meaningful
+        "save_unprofitable": True  # Save unprofitable models for comparison but don't activate
+    }
 })
 
 # Metrics configuration
@@ -196,7 +202,18 @@ def reload_config():
         "auto_bet_after_training": False
     })
     AUTO_BET_AFTER_TRAINING = FAKE_MONEY_CONFIG.get("auto_bet_after_training", False)
-    MODEL_VERSIONING_CONFIG = _automation_config.get("model_versioning", {})
+    MODEL_VERSIONING_CONFIG = _automation_config.get("model_versioning", {
+        "auto_rollback_enabled": True,
+        "rollback_threshold": -10.0,
+        "rollback_evaluation_bets": 50,
+        "max_versions_to_keep": 10,
+        "profitability_selection": {
+            "enabled": True,
+            "min_roi": 0.0,
+            "min_bets": 10,
+            "save_unprofitable": True
+        }
+    })
     METRICS_CONFIG = _automation_config.get("metrics", {})
     BACKUP_CONFIG = _automation_config.get("backup", {})
     HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("hyperparameter_tuning", {

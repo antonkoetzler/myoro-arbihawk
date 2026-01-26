@@ -13,7 +13,6 @@ interface LogsTabProps {
 interface LogSectionProps {
   title: string;
   logs: WebSocketLog[];
-  wsConnected: boolean;
   colorClass: string;
   isSingleView?: boolean;
 }
@@ -21,14 +20,14 @@ interface LogSectionProps {
 /**
  * Individual log section component with its own scroll management
  */
-function LogSection({ title, logs, wsConnected, colorClass, isSingleView }: LogSectionProps) {
+function LogSection({ title, logs, colorClass, isSingleView }: LogSectionProps) {
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const savedScrollTopRef = useRef<number>(0);
   const previousLogsLengthRef = useRef<number>(0);
   const wasAtBottomBeforeUpdateRef = useRef<boolean>(true);
   const isUserScrollingRef = useRef<boolean>(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMountRef = useRef(true);
 
   const checkIfAtBottom = useCallback((container: HTMLDivElement): boolean => {
@@ -118,7 +117,9 @@ function LogSection({ title, logs, wsConnected, colorClass, isSingleView }: LogS
         <div className='flex items-center gap-2'>
           <div className={`h-2 w-2 rounded-full ${colorClass}`} />
           <h4 className='text-sm font-semibold text-slate-300'>{title}</h4>
-          <span className='text-xs text-slate-500'>({logs.length})</span>
+          <span className='text-xs text-slate-500' title={`${logs.length} log entries`}>
+            ({logs.length})
+          </span>
         </div>
         <button
           onClick={() => {
@@ -231,8 +232,17 @@ function LogSection({ title, logs, wsConnected, colorClass, isSingleView }: LogS
  * Separates logs by domain (betting vs trading)
  * Supports single and dual view modes
  */
-export function LogsTab({ wsLogs, wsConnected, clearLogs }: LogsTabProps) {
-  const [viewMode, setViewMode] = useState<'dual' | 'betting' | 'trading'>('dual');
+const LOGS_VIEW_MODE_KEY = 'arbihawk_logs_view_mode';
+
+export function LogsTab({ wsLogs, wsConnected }: LogsTabProps) {
+  const [viewMode, setViewMode] = useState<'dual' | 'betting' | 'trading'>(() => {
+    const saved = localStorage.getItem(LOGS_VIEW_MODE_KEY);
+    return (saved === 'dual' || saved === 'betting' || saved === 'trading') ? saved : 'dual';
+  });
+
+  useEffect(() => {
+    localStorage.setItem(LOGS_VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
   
   // Separate logs by domain
   const bettingLogs = wsLogs.filter(log => {
@@ -310,7 +320,6 @@ export function LogsTab({ wsLogs, wsConnected, clearLogs }: LogsTabProps) {
             <LogSection
               title='Betting'
               logs={bettingLogs}
-              wsConnected={wsConnected}
               colorClass='bg-sky-400'
               isSingleView={viewMode !== 'dual'}
             />
@@ -319,7 +328,6 @@ export function LogsTab({ wsLogs, wsConnected, clearLogs }: LogsTabProps) {
             <LogSection
               title='Trading'
               logs={tradingLogs}
-              wsConnected={wsConnected}
               colorClass='bg-emerald-400'
               isSingleView={viewMode !== 'dual'}
             />

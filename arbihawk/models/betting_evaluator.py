@@ -132,25 +132,22 @@ class BettingEvaluator:
         
         match_start = fixture.iloc[0]['start_time']
         
-        # For historical evaluation, if match is already completed, get all odds
-        # (odds may have been scraped after match completion)
-        # Otherwise, get odds created before prediction time
+        # Always filter odds by match start time to ensure we only use pre-match odds
+        # This is critical for accurate backtesting - we can't use odds scraped after match completion
         try:
             match_start_dt = pd.to_datetime(match_start, utc=True)
             prediction_dt = pd.to_datetime(prediction_time, utc=True) if prediction_time else None
             
-            # If match start is in the past, don't filter by date (historical data)
-            # Otherwise, filter by before_date for forward-looking evaluation
-            if match_start_dt < pd.Timestamp.now(tz='UTC'):
-                # Historical match - get all odds
-                odds = self.db.get_odds(fixture_id=fixture_id)
-            else:
-                # Future match - filter by before_date
-                cutoff_time = min(prediction_time, match_start) if prediction_time else match_start
-                odds = self.db.get_odds(fixture_id=fixture_id, before_date=cutoff_time)
+            # Always use match start as cutoff to ensure we only get pre-match odds
+            # Use the earlier of prediction_time or match_start to be safe
+            cutoff_time = min(prediction_time, match_start) if prediction_time else match_start
+            odds = self.db.get_odds(fixture_id=fixture_id, before_date=cutoff_time)
         except:
-            # Fallback: get all odds if date parsing fails
-            odds = self.db.get_odds(fixture_id=fixture_id)
+            # Fallback: try to filter by match_start if available, otherwise get all (not ideal)
+            try:
+                odds = self.db.get_odds(fixture_id=fixture_id, before_date=match_start)
+            except:
+                odds = self.db.get_odds(fixture_id=fixture_id)
         
         # Filter by market
         if self.market == '1x2':

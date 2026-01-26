@@ -72,6 +72,20 @@ class TradingService:
         self._momentum_predictor = self.model_manager.get_model('momentum')
         self._swing_predictor = self.model_manager.get_model('swing')
         self._volatility_predictor = self.model_manager.get_model('volatility')
+        
+        # Log model loading status
+        if self.log_callback:
+            momentum_loaded = self._momentum_predictor is not None
+            swing_loaded = self._swing_predictor is not None
+            volatility_loaded = self._volatility_predictor is not None
+            
+            momentum_trained = momentum_loaded and self._momentum_predictor.is_trained if momentum_loaded else False
+            swing_trained = swing_loaded and self._swing_predictor.is_trained if swing_loaded else False
+            volatility_trained = volatility_loaded and self._volatility_predictor.is_trained if volatility_loaded else False
+            
+            self._log("info", f"Models loaded - Momentum: {momentum_loaded} (trained: {momentum_trained}), "
+                             f"Swing: {swing_loaded} (trained: {swing_trained}), "
+                             f"Volatility: {volatility_loaded} (trained: {volatility_trained})")
     
     def reload_models(self) -> None:
         """Reload models from disk."""
@@ -143,7 +157,7 @@ class TradingService:
             asset_type = signal.get('asset_type', 'stock')
             strategy = signal.get('strategy', 'manual')
             
-            # Calculate position size
+            # Calculate position size (using entry_price, slippage will be applied in executor)
             quantity = self.portfolio.calculate_position_size(
                 signal.to_dict(), entry_price
             )
@@ -152,7 +166,7 @@ class TradingService:
                 self._log("warning", f"Skipping {symbol}: position size is 0")
                 continue
             
-            # Execute order
+            # Execute order (executor will adjust for slippage)
             result = self.executor.execute_market_order(
                 symbol=symbol,
                 direction=direction,
@@ -263,8 +277,11 @@ class TradingService:
                 execution_results = self.execute_signals(signals, max_executions)
                 results['execution_results'] = execution_results
                 results['signals_executed'] = sum(1 for r in execution_results if r.get('success'))
+                self._log("info", f"Executed {results['signals_executed']} trades")
             else:
                 self._log("info", "No signals found")
+                results['execution_results'] = []
+                results['signals_executed'] = 0
             
             # Step 4: Record portfolio snapshot
             self.portfolio.record_portfolio_snapshot()
@@ -274,11 +291,14 @@ class TradingService:
             results['pnl'] = self.portfolio.get_pnl()
             
             self._log("success", 
-                f"Trading cycle complete: {results['signals_executed']} trades, "
+                f"Trading cycle complete: {results['signals_executed']} trades executed, "
+                f"{results['signals_found']} signals found, "
                 f"Portfolio: ${results['portfolio_value']:.2f}")
             
         except Exception as e:
+            import traceback
             self._log("error", f"Trading cycle error: {e}")
+            self._log("error", traceback.format_exc())
             results['success'] = False
             results['error'] = str(e)
         

@@ -110,6 +110,16 @@ class PaperTradingExecutor:
         # Apply slippage
         fill_price = self._apply_slippage(price, direction, OrderType.MARKET)
         
+        # Adjust quantity to account for slippage if needed
+        # Recalculate to ensure we don't exceed max position size
+        actual_position_value = quantity * fill_price
+        portfolio_value = self.portfolio.get_portfolio_value()
+        max_allowed = portfolio_value * self.portfolio.max_position_size
+        
+        if actual_position_value > max_allowed:
+            # Reduce quantity to fit within max
+            quantity = (max_allowed / fill_price) * 0.999  # 0.999 to ensure we're under
+        
         # Check if we can open position
         can_open, reason = self.portfolio.can_open_position(symbol, quantity, fill_price)
         
@@ -135,14 +145,11 @@ class PaperTradingExecutor:
             'symbol': symbol,
             'asset_type': asset_type,
             'strategy': strategy,
-            'direction': direction,
             'quantity': quantity,
             'entry_price': fill_price,
             'current_price': fill_price,
             'stop_loss': stop_loss,
-            'take_profit': take_profit,
-            'status': 'open',
-            'opened_at': datetime.now().isoformat()
+            'take_profit': take_profit
         })
         
         # Record trade
@@ -197,9 +204,9 @@ class PaperTradingExecutor:
                 'reason': f'No open position for {symbol}'
             }
         
-        direction = position['direction']
+        direction = position.get('direction', 'long')
         quantity = position['quantity']
-        entry_price = position['entry_price']
+        entry_price = position.get('avg_entry_price', position.get('entry_price', 0))
         asset_type = position.get('asset_type', 'stock')
         strategy = position.get('strategy', 'manual')
         
@@ -378,7 +385,7 @@ class PaperTradingExecutor:
                 continue
             
             current_price = current_prices[symbol]
-            direction = pos['direction']
+            direction = pos.get('direction', 'long')
             stop_loss = pos.get('stop_loss')
             take_profit = pos.get('take_profit')
             
@@ -427,8 +434,8 @@ class PaperTradingExecutor:
                 continue
             
             current_price = current_prices[symbol]
-            entry_price = pos['entry_price']
-            direction = pos['direction']
+            entry_price = pos.get('avg_entry_price', pos.get('entry_price', 0))
+            direction = pos.get('direction', 'long')
             quantity = pos['quantity']
             
             # Calculate unrealized P&L

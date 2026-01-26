@@ -7,137 +7,76 @@ The arbitrage hawk - A multi-domain prediction and trading system powered by mac
 Arbihawk uses machine learning (XGBoost) for two domains:
 
 ### Sports Betting
+
 - Collects match data and odds from scrapers (Betano, Flashscore, Livescore)
 - Predicts match outcomes (1x2, Over/Under, BTTS)
 - Identifies value bets with positive expected value
 - Tracks performance with fake money system
 
 ### Stock/Crypto Trading
+
 - Fetches price data from Alpha Vantage (stocks) and CoinGecko (crypto)
 - Technical analysis features (RSI, MACD, Bollinger Bands, ATR)
 - Three strategies: Momentum, Swing Trading, Volatility Breakout
 - Paper trading with portfolio management and position sizing
 
 Both domains share:
+
 - SQLite local storage
 - Model versioning and training pipelines
 - Dashboard for monitoring and control
 - Automated scheduling
+- JSON configuration files (`config/config.json`, `config/automation.json`)
 
 ## Setup
 
-1. **Clone the repository with submodules:**
+1. **Clone repository:**
+   - `git clone --recurse-submodules <repo-url>`
+   - Or if already cloned: `git submodule update --init --recursive`
 
-   ```bash
-   git clone --recurse-submodules <repo-url>
-   cd arbihawk
-   ```
+2. **Initialize project:**
+   - VS Code task: **Setup: Initialize Git Submodules** (`Ctrl+Shift+P` → "Tasks: Run Task")
+   - VS Code task: **Setup: Install Dependencies** (`Ctrl+Shift+P` → "Tasks: Run Task")
 
-   Or if already cloned:
+3. **Configure (optional):**
+   - Edit `config/config.json` for main settings
+   - Edit `config/automation.json` for automation settings
+   - API keys (optional): Add Alpha Vantage/CoinGecko keys to `config/config.json` → `trading.api_keys` for better data collection reliability
 
-   ```bash
-   git submodule update --init --recursive
-   ```
+## Quick Start
 
-2. **Create and activate the virtual environment:**
+1. **Start the backend:**
+   - VS Code task: **Dashboard Backend: Start Server** (`Ctrl+Shift+P` → "Tasks: Run Task")
 
-   **Windows PowerShell:**
+2. **Start the frontend:**
+   - VS Code task: **Dashboard Frontend: Start Dev Server** (`Ctrl+Shift+P` → "Tasks: Run Task")
 
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
+3. **Open the dashboard:**
+   - Navigate to <http://localhost:5173>
 
-   **macOS/Linux:**
+4. **Sports Betting:**
+   - Collect data: Dashboard → Automation tab → Betting group → "Actions" → "Collect Data"
+   - Train models: Dashboard → Automation tab → Betting group → "Actions" → "Train Models"
+   - Start daemon: Dashboard → Automation tab → Betting group → "Actions" → "Start Daemon"
+   - **Daemon mode:** Runs collection → training → betting cycles automatically at configured intervals
+   - Monitor: Dashboard → Betting tab for value bets and performance
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   ```
+5. **Stock/Crypto Trading:**
+   - Enable trading: Edit `config/config.json` → Set `trading.enabled` to `true`
+   - Initialize portfolio: Dashboard → Automation tab → Trading group → "Actions" → "Initialize Portfolio"
+   - Test first: Dashboard → Automation tab → Trading group → "Actions" → "Full Run"
+   - Start daemon: Dashboard → Automation tab → Trading group → "Actions" → "Start Daemon"
+   - **Daemon mode:** Runs collection → training → trading cycle every hour automatically
+   - Monitor: Dashboard → Trading tab for portfolio performance and positions
 
-3. **Install dependencies:**
+**Both systems can run simultaneously in daemon mode for hands-off operation.**
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure settings (optional):**
-
-   Edit `config/config.json` for main settings:
-
-   ```json
-   {
-     "db_path": "data/arbihawk.db",
-     "ev_threshold": 0.07
-   }
-   ```
-
-   Edit `config/automation.json` for automation settings.
-
-## Usage
-
-### Common Workflows
-
-1. **Collect Data** - Run data collection to gather fixtures, odds, and scores
-2. **Train Models** - Train prediction models on historical data
-3. **Start Dashboard** - Launch the monitoring dashboard at http://localhost:8000
-4. **Run Automation** - Execute automated collection and training cycles
-
-All commands are available as VS Code tasks for convenience. See [Tasks Guide](docs/tasks.md) for the complete reference.
-
-## Markets
-
-- **1x2**: Match outcome (Home Win, Draw, Away Win)
-- **over_under**: Total goals over/under 2.5
-- **btts**: Both teams to score (Yes/No)
-
-## Architecture
-
-```
-arbihawk/
-├── automation/          # Scheduled data collection and training
-├── config/              # JSON configuration files
-├── dashboard/           # FastAPI backend and React frontend
-├── data/                # Database and data processing
-│   ├── features.py      # Betting feature engineering
-│   └── stock_features.py # Trading feature engineering
-├── engine/              # Signal engines
-│   ├── value_bet.py     # Value betting engine
-│   └── trade_signal.py  # Trading signal engine
-├── models/              # XGBoost prediction models
-│   ├── predictor.py     # Betting predictor
-│   └── trading_predictor.py # Trading predictor
-├── trading/             # Stock/crypto trading
-│   ├── portfolio_manager.py
-│   ├── execution.py
-│   └── service.py
-├── monitoring/          # Metrics and reporting
-├── scrapers/            # Git submodule for data scrapers
-├── testing/             # Fake money system
-└── docs/                # Documentation
-```
-
-## Data Storage
-
-Data is stored locally in SQLite at `data/arbihawk.db`. The database includes:
-
-- Fixtures (matches)
-- Odds from scrapers
-- Scores for completed matches
-- Bet history (fake money)
-- Model versions
-- Performance metrics
-
-## Configuration
-
-All configuration is stored in JSON files in the `config/` directory:
-
-- `config.json` - Main settings (database path, EV threshold)
-- `automation.json` - Automation schedules, scraper args, fake money settings
+All commands are available as VS Code tasks. See [Tasks Guide](docs/tasks.md) for complete reference.
 
 ## Documentation Index
 
 ### General
+
 - [Tasks Guide](docs/tasks.md) - Using VS Code tasks for all commands
 - [Setup Guide](docs/setup.md) - Detailed setup instructions
 - [Dashboard Guide](docs/dashboard.md) - Dashboard usage and API reference
@@ -145,6 +84,7 @@ All configuration is stored in JSON files in the `config/` directory:
 - [Versioning Guide](docs/versioning.md) - Model versioning and rollback
 
 ### Sports Betting
+
 - [Training Guide](docs/training.md) - Model training documentation
 - [Predictor Guide](docs/predictor.md) - Model architecture and usage
 - [Calibration Guide](docs/calibration.md) - Probability calibration and ROI improvement
@@ -153,7 +93,10 @@ All configuration is stored in JSON files in the `config/` directory:
 - [Monitoring Guide](docs/monitoring.md) - Metrics and performance tracking
 
 ### Stock/Crypto Trading
-- [Trading Guide](docs/trading.md) - **Complete trading system documentation** ⭐
+
+- [Trading Usage Guide](docs/trading-usage.md) - **Step-by-step usage instructions** ⭐
+- [Trading Guide](docs/trading.md) - Technical reference (architecture, strategies, API)
 
 ### Development
+
 - [Profitability Backlog](docs/backlog/backlog.md) - Tracked improvements for profitability

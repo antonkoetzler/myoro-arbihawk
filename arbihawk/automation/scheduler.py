@@ -76,7 +76,9 @@ class AutomationScheduler:
         
         # State
         self._running = False
+        self._trading_daemon_running = False
         self._stop_event = threading.Event()  # For daemon mode
+        self._trading_daemon_stop_event = threading.Event()  # For trading daemon mode
         self._stop_task_event = threading.Event()  # For stopping individual tasks
         self._logs = deque(maxlen=1000)
         self._current_task = None
@@ -141,6 +143,7 @@ class AutomationScheduler:
         """Get scheduler status."""
         return {
             "running": self._running,
+            "trading_daemon_running": self._trading_daemon_running,
             "current_task": self._current_task,
             "last_collection": self._last_collection,
             "last_training": self._last_training,
@@ -952,6 +955,47 @@ print(json.dumps(league_ids))
         self._log("info", "Stopping daemon...")
         self._stop_event.set()
     
+    def start_trading_daemon(self, interval_seconds: int = 3600) -> None:
+        """
+        Start trading daemon mode (runs full trading cycles).
+        
+        Args:
+            interval_seconds: Interval between cycles (default: 1 hour)
+        """
+        if self._trading_daemon_running:
+            self._log("warning", "Trading daemon already running")
+            return
+        
+        self._trading_daemon_running = True
+        self._trading_daemon_stop_event.clear()
+        
+        self._log("info", f"[TRADING] Starting trading daemon mode (interval: {interval_seconds}s)")
+        
+        while not self._trading_daemon_stop_event.is_set():
+            try:
+                self.run_full_trading_cycle()
+            except Exception as e:
+                self._log("error", f"[TRADING] Cycle error: {e}")
+            
+            # Check if stopped before waiting
+            if self._trading_daemon_stop_event.is_set():
+                break
+            
+            # Wait for next cycle (with interruptible wait)
+            self._trading_daemon_stop_event.wait(interval_seconds)
+        
+        self._trading_daemon_running = False
+        self._log("info", "[TRADING] Trading daemon stopped")
+    
+    def stop_trading_daemon(self) -> None:
+        """Stop trading daemon mode."""
+        if not self._trading_daemon_running:
+            self._log("warning", "[TRADING] Trading daemon not running")
+            return
+        
+        self._log("info", "[TRADING] Stopping trading daemon...")
+        self._trading_daemon_stop_event.set()
+    
     def stop_task(self) -> Dict[str, Any]:
         """Stop the currently running task (collection, training, betting, or full_run)."""
         if not self._current_task:
@@ -1512,3 +1556,119 @@ print(json.dumps(league_ids))
         thread.start()
         
         return {"success": True, "message": "Trading cycle started in background"}
+    
+    def run_full_trading_cycle(self) -> Dict[str, Any]:
+        """
+        Run full trading cycle: collection + training + cycle.
+        
+        Returns:
+            Combined result dict
+        """
+        original_task = self._current_task
+        was_full_run = original_task == "trading_full_run"
+        if not was_full_run:
+            self._current_task = "trading_full_run"
+        
+        self._log("info", "=" * 60)
+        self._log("info", "[TRADING] Starting full cycle (collection + training + cycle)")
+        self._log("info", "=" * 60)
+        full_run_start = time.time()
+        
+        try:
+            # Phase 1: Collection
+            collection_result = self.run_trading_collection()
+            if was_full_run:
+                self._current_task = "trading_full_run"
+            
+            if collection_result.get("success"):
+                self._log("success", "[TRADING] Collection phase completed successfully")
+            else:
+                self._log("warning", "[TRADING] Collection phase completed with errors")
+            
+            if self._stop_task_event.is_set():
+                return {
+                    "collection": collection_result,
+                    "training": {"success": False, "skipped": True, "reason": "Stopped"},
+                    "cycle": {"success": False, "skipped": True, "reason": "Stopped"},
+                    "success": False,
+                    "stopped": True
+                }
+            
+            # Phase 2: Training
+            self._log("info", "=" * 60)
+            self._log("info", "[TRADING] Starting Training phase...")
+            self._log("info", "=" * 60)
+            
+            training_result = self.run_trading_training()
+            if was_full_run:
+                self._current_task = "trading_full_run"
+            
+            if training_result.get("success"):
+                self._log("success", "[TRADING] Training phase completed successfully")
+            else:
+                self._log("warning", "[TRADING] Training phase completed with errors")
+            
+            if self._stop_task_event.is_set():
+                return {
+                    "collection": collection_result,
+                    "training": training_result,
+                    "cycle": {"success": False, "skipped": True, "reason": "Stopped"},
+                    "success": False,
+                    "stopped": True
+                }
+            
+            # Phase 3: Cycle
+            self._log("info", "=" * 60)
+            self._log("info", "[TRADING] Starting Cycle phase...")
+            self._log("info", "=" * 60)
+            
+            cycle_result = self.run_trading_cycle()
+            if was_full_run:
+                self._current_task = "trading_full_run"
+            
+            if cycle_result.get("success"):
+                self._log("success", "[TRADING] Cycle phase completed successfully")
+            else:
+                self._log("warning", "[TRADING] Cycle phase completed with errors")
+            
+            full_run_duration = time.time() - full_run_start
+            self._log("success", f"[TRADING] Full cycle completed in {full_run_duration/60:.1f} minutes")
+            
+            return {
+                "collection": collection_result,
+                "training": training_result,
+                "cycle": cycle_result,
+                "success": (
+                    collection_result.get("success", False) and 
+                    training_result.get("success", False) and
+                    cycle_result.get("success", False)
+                ),
+                "duration_seconds": full_run_duration
+            }
+        finally:
+            if not was_full_run:
+                self._current_task = None
+            elif was_full_run and original_task != "trading_full_run":
+                self._current_task = original_task
+    
+    def trigger_full_trading_cycle(self) -> Dict[str, Any]:
+        """Manually trigger full trading cycle (for dashboard). Runs in background thread."""
+        if self._current_task:
+            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        
+        def run_in_background():
+            try:
+                self._current_task = "trading_full_run"
+                self._stop_task_event.clear()
+                self.run_full_trading_cycle()
+            except Exception as e:
+                self._log("error", f"[TRADING] Background full cycle failed: {e}")
+            finally:
+                if self._current_task == "trading_full_run":
+                    self._current_task = None
+                self._stop_task_event.clear()
+        
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+        
+        return {"success": True, "message": "Full trading cycle started in background"}

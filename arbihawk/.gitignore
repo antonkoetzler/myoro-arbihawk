@@ -12,3 +12,5 @@ env/
 data/matches/
 data/*.db
 data/backups/*.db.backup
+data/cache/
+*.pkl

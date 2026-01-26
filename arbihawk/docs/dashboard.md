@@ -2,7 +2,7 @@
 
 ## Overview
 
-The dashboard is a local web interface for monitoring and controlling the betting prediction system. It provides real-time status, performance metrics, and manual controls for automation.
+The dashboard is a local web interface for monitoring and controlling the ML-powered prediction & trading platform. It provides real-time status, performance metrics, and manual controls for automation.
 
 The dashboard runs on **<http://localhost:8000>** and consists of:
 

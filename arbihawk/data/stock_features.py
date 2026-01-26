@@ -671,7 +671,7 @@ class StockFeatureEngineer:
         
         # Return latest row features
         latest = df.iloc[-1][available_cols]
-        return latest.fillna(0)
+        return latest.fillna(0).infer_objects(copy=False).infer_objects(copy=False)
     
     def compute_features_batch(self, symbols: List[str], asset_type: str,
                                 strategy: str) -> pd.DataFrame:

@@ -1,1 +1,1 @@
-"""Test suite for Arbihawk betting prediction system."""
+"""Test suite for Arbihawk ML-powered prediction & trading platform."""

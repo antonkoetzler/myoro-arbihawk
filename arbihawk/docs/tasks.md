@@ -60,6 +60,23 @@ Starts frontend development server (auto-installs dependencies first)
 **Database: Check Stats**  
 Displays database statistics (row counts per table)
 
+### Trading
+
+**Trading: Collect Data**  
+Fetches latest price data for all watchlist symbols (stocks and crypto)
+
+**Trading: Train Models**  
+Trains all trading strategy models (momentum, swing, volatility)
+
+**Trading: Run Trading Cycle**  
+Executes one trading cycle (updates positions, finds signals, executes trades)
+
+**Trading: Initialize Portfolio**  
+Initializes portfolio with starting balance ($10k default)
+
+**Trading: Check Portfolio Status**  
+Displays portfolio performance metrics and current status
+
 ## Notes
 
 - All Python tasks use the virtual environment at `arbihawk/venv/`

@@ -51,10 +51,10 @@ class CryptoRateLimiter:
     Rate limiter for CoinGecko API calls.
     
     CoinGecko free tier: ~10-50 calls/minute (varies).
-    We use a conservative 30 calls/min limit.
+    We use a conservative 10 calls/min limit to avoid rate limiting.
     """
     
-    def __init__(self, calls_per_min: int = 30):
+    def __init__(self, calls_per_min: int = 10):
         self.calls_per_min = calls_per_min
         self._calls: List[float] = []
     
@@ -76,7 +76,7 @@ class CryptoRateLimiter:
         now = time.time()
         if self._calls:
             oldest = min(self._calls)
-            wait_time = 60 - (now - oldest) + 0.1
+            wait_time = 60 - (now - oldest) + 1.0  # Add 1s buffer
             if wait_time > 0:
                 time.sleep(wait_time)
                 return wait_time
@@ -120,10 +120,10 @@ class CryptoIngestionService:
         self.watchlist = trading_config.get("watchlist", {}).get("crypto", [])
         self.backfill_days = trading_config.get("historical_backfill_days", 365)
         
-        # Rate limiting
+        # Rate limiting - use conservative limit to avoid rate limiting
         rate_config = trading_config.get("rate_limiting", {})
         self.rate_limiter = CryptoRateLimiter(
-            calls_per_min=rate_config.get("coingecko_calls_per_min", 30)
+            calls_per_min=rate_config.get("coingecko_calls_per_min", 10)
         )
         
         # Setup session with optional caching
@@ -172,7 +172,7 @@ class CryptoIngestionService:
         """
         coin_id = self._get_coingecko_id(symbol)
         if not coin_id:
-            self._log("error", f"Unknown crypto symbol: {symbol}")
+            self._log("error", f"Unknown crypto symbol: {symbol}. Supported symbols: {', '.join(sorted(COINGECKO_ID_MAP.keys()))}")
             return None
         
         # Check rate limits
@@ -189,7 +189,7 @@ class CryptoIngestionService:
         }
         
         # Retry logic with exponential backoff
-        max_retries = 3
+        max_retries = 5
         last_error = None
         
         for attempt in range(max_retries):
@@ -198,10 +198,12 @@ class CryptoIngestionService:
                 self.rate_limiter.record_call()
                 
                 if response.status_code == 429:
-                    # Rate limited - wait and retry
-                    delay = (2 ** attempt) * (1 + attempt)
+                    # Rate limited - wait longer and retry
+                    delay = min((2 ** attempt) * (2 + attempt), 60)  # Cap at 60s
                     self._log("warning", f"Rate limited for {symbol}, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(delay)
+                    # Clear recent calls to reset rate limiter state
+                    self.rate_limiter._calls = [t for t in self.rate_limiter._calls if time.time() - t > 60]
                     continue
                 
                 if response.status_code != 200:
@@ -557,15 +559,15 @@ class CryptoIngestionService:
             if result["success"]:
                 results["collected"] += 1
                 results["total_prices"] += result["prices_ingested"]
-                self._log("success", f"✓ {symbol}: {result['prices_ingested']} prices")
+                self._log("success", f"[OK] {symbol}: {result['prices_ingested']} prices")
             else:
                 results["failed"] += 1
                 results["errors"].append(f"{symbol}: {result['error']}")
-                self._log("error", f"✗ {symbol}: {result['error']}")
+                self._log("error", f"[FAIL] {symbol}: {result['error']}")
             
-            # Small delay between symbols to be nice to the API
+            # Longer delay between symbols to avoid rate limiting
             if i < len(symbols) - 1:
-                time.sleep(0.5)
+                time.sleep(2.0)  # 2 second delay between symbols
         
         if results["failed"] > 0:
             results["success"] = results["collected"] > 0

@@ -419,7 +419,7 @@ class TradingModelManager:
     
     def __init__(self, db: Database):
         self.db = db
-        self.version_manager = ModelVersionManager(db, domain='trading')
+        self.version_manager = ModelVersionManager(db)
         self._models: Dict[str, TradingPredictor] = {}
     
     def get_model(self, strategy: str, load_best: bool = True) -> Optional[TradingPredictor]:
@@ -467,12 +467,15 @@ class TradingModelManager:
         
         # Record version
         version_metrics = metrics or predictor.training_metrics
-        version_id = self.version_manager.record_new_version(
+        training_samples = version_metrics.get('samples_train', 0) if isinstance(version_metrics, dict) else 0
+        version_id = self.version_manager.save_version(
+            domain='trading',
             market=strategy,
             model_path=str(model_path),
-            cv_score=predictor.cv_score,
-            hyperparameters=None,
-            metrics=version_metrics
+            training_samples=training_samples,
+            cv_score=predictor.cv_score or 0.0,
+            performance_metrics=version_metrics,
+            activate=True
         )
         
         # Update cache

@@ -209,6 +209,12 @@ class HyperparameterTuner:
             'verbosity': 0  # Suppress XGBoost output
         })
         
+        # Get number of classes from label encoder (fit on all data)
+        n_classes = len(label_encoder.classes_)
+        if n_classes < 1:
+            # Invalid number of classes, return very negative value
+            return -1.0
+        
         # Temporal cross-validation
         splitter = TemporalSplitter(n_splits=5, test_size=0.2)
         rois = []
@@ -228,11 +234,22 @@ class HyperparameterTuner:
             else:
                 fixture_ids_test = None
             
-            # Encode labels
+            # Encode labels using the pre-fitted encoder
             y_train_encoded = label_encoder.transform(y_train)
             
-            # Get number of classes for multiclass objective
-            n_classes = len(label_encoder.classes_)
+            # Check that training set has all classes (required for XGBoost)
+            # XGBoost requires all classes from 0 to n_classes-1 to be present in training data
+            unique_classes = np.unique(y_train_encoded)
+            expected_classes = np.arange(n_classes)
+            
+            if len(unique_classes) < n_classes or not np.all(np.isin(expected_classes, unique_classes)):
+                # Training set doesn't have all classes - skip this split
+                if self.log_callback:
+                    self.log_callback("warning", 
+                        f"Trial {trial.number} split {split_idx}: Training set missing classes "
+                        f"(has {unique_classes.tolist()}, need {expected_classes.tolist()}). Skipping.")
+                continue
+            
             params_with_classes = params.copy()
             params_with_classes['num_class'] = n_classes
             
@@ -246,6 +263,7 @@ class HyperparameterTuner:
             
             # Evaluate on betting metrics
             try:
+                # Use original y_test (not encoded) for betting evaluator
                 metrics = self.betting_evaluator.evaluate(
                     predictor=predictor,
                     X_val=X_test,
@@ -331,9 +349,16 @@ class HyperparameterTuner:
                      f"Using default hyperparameters.")
             return None
         
-        # Encode labels
+        # Encode labels - fit on ALL data to ensure all classes are known
         label_encoder = LabelEncoder()
         y_encoded = label_encoder.fit_transform(y)
+        
+        # Verify we have valid classes
+        n_classes = len(label_encoder.classes_)
+        if n_classes < 1:
+            self._log("error", 
+                     f"Invalid number of classes after encoding: {n_classes}. Cannot proceed with tuning.")
+            return None
         
         # Create fixture_ids if not provided (fallback for backward compatibility)
         if fixture_ids is None:

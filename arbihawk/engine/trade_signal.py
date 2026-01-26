@@ -548,19 +548,34 @@ class TradeSignalEngine:
         all_signals = []
         
         # Momentum signals
-        momentum = self.find_momentum_signals()
-        if not momentum.empty:
-            all_signals.append(momentum.head(limit_per_strategy))
+        if self.momentum_predictor is None:
+            pass  # Model not loaded - skip silently
+        elif not self.momentum_predictor.is_trained:
+            pass  # Model not trained - skip silently
+        else:
+            momentum = self.find_momentum_signals()
+            if not momentum.empty:
+                all_signals.append(momentum.head(limit_per_strategy))
         
         # Swing signals
-        swing = self.find_swing_signals()
-        if not swing.empty:
-            all_signals.append(swing.head(limit_per_strategy))
+        if self.swing_predictor is None:
+            pass  # Model not loaded - skip silently
+        elif not self.swing_predictor.is_trained:
+            pass  # Model not trained - skip silently
+        else:
+            swing = self.find_swing_signals()
+            if not swing.empty:
+                all_signals.append(swing.head(limit_per_strategy))
         
         # Volatility signals (crypto only)
-        volatility = self.find_volatility_signals()
-        if not volatility.empty:
-            all_signals.append(volatility.head(limit_per_strategy))
+        if self.volatility_predictor is None:
+            pass  # Model not loaded - skip silently
+        elif not self.volatility_predictor.is_trained:
+            pass  # Model not trained - skip silently
+        else:
+            volatility = self.find_volatility_signals()
+            if not volatility.empty:
+                all_signals.append(volatility.head(limit_per_strategy))
         
         if not all_signals:
             return pd.DataFrame()

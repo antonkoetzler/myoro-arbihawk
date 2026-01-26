@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Set
+import pandas as pd
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,6 +29,8 @@ from testing.bankroll import VirtualBankroll
 from monitoring.metrics import MetricsCollector
 from monitoring.reporter import MetricsReporter
 from models.versioning import ModelVersionManager
+from models.predictor import BettingPredictor
+from engine.value_bet import ValueBetEngine
 from automation.scheduler import AutomationScheduler
 from backtesting.backtest import BacktestEngine, BacktestResult
 
@@ -127,7 +130,7 @@ ws_manager = ConnectionManager()
 # Initialize FastAPI app
 app = FastAPI(
     title="Arbihawk Dashboard API",
-    description="API for monitoring and controlling the betting prediction system",
+    description="API for monitoring and controlling the ML-powered prediction & trading platform",
     version="1.0.0"
 )
 
@@ -297,12 +300,17 @@ async def get_bet_history(
     tournament_name: Optional[str] = Query(None, description="Filter by tournament/league name (partial match)"),
     date_from: Optional[str] = Query(None, description="Filter bets from this date (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Filter bets until this date (YYYY-MM-DD)"),
+    search: Optional[str] = Query(None, description="Search across all fields (tournament, market, outcome, result, odds, stake, payout)"),
     page: int = Query(default=1, ge=1, description="Page number"),
     per_page: int = Query(default=50, ge=1, le=1000, description="Items per page")
 ) -> Dict[str, Any]:
-    """Get bet history with optional filtering and pagination."""
+    """Get bet history with optional filtering, search, and pagination."""
     db = get_db()
     offset = (page - 1) * per_page
+    
+    # If search is provided, fetch more results for client-side filtering
+    # Otherwise use normal pagination
+    limit = 10000 if search else per_page
     
     bets_df = db.get_bet_history(
         result=result,
@@ -311,19 +319,105 @@ async def get_bet_history(
         tournament_name=tournament_name,
         date_from=date_from,
         date_to=date_to,
-        limit=per_page,
-        offset=offset
+        limit=limit,
+        offset=0 if search else offset
     )
+    
+    # Apply search filter if provided
+    if search and len(bets_df) > 0:
+        import unicodedata
+        
+        def normalize_text(text: str) -> str:
+            """Normalize text by removing accents and converting to lowercase."""
+            if not text:
+                return ''
+            text_lower = text.lower()
+            # Remove diacritics (accents)
+            normalized = unicodedata.normalize('NFD', text_lower)
+            ascii_text = normalized.encode('ascii', 'ignore').decode('ascii')
+            return ascii_text
+        
+        search_normalized = normalize_text(search)
+        
+        def matches_search(row):
+            """Check if row matches search query across all relevant fields."""
+            fields_to_check = [
+                str(row.get('tournament_name', '')),
+                str(row.get('market_name', '')),
+                str(row.get('outcome_name', '')),
+                str(row.get('result', '')),
+                str(row.get('odds', '')),
+                str(row.get('stake', '')),
+                str(row.get('payout', '')),
+                str(row.get('model_market', '')),
+            ]
+            for field in fields_to_check:
+                field_normalized = normalize_text(field)
+                if search_normalized in field_normalized:
+                    return True
+            return False
+        
+        bets_df = bets_df[bets_df.apply(matches_search, axis=1)]
+    
+    # Apply pagination after search
+    if search and len(bets_df) > 0:
+        bets_df = bets_df.iloc[offset:offset + per_page]
+    
     bets = bets_df.to_dict('records') if len(bets_df) > 0 else []
     
-    total_count = db.get_bet_history_count(
-        result=result,
-        market_name=market_name,
-        outcome_name=outcome_name,
-        tournament_name=tournament_name,
-        date_from=date_from,
-        date_to=date_to
-    )
+    # Get total count
+    if search:
+        # For search, count is based on filtered results
+        # We already have the full filtered set, just need to count it before pagination
+        bets_df_count = db.get_bet_history(
+            result=result,
+            market_name=market_name,
+            outcome_name=outcome_name,
+            tournament_name=tournament_name,
+            date_from=date_from,
+            date_to=date_to,
+            limit=10000,
+            offset=0
+        )
+        if len(bets_df_count) > 0:
+            import unicodedata
+            def normalize_text(text: str) -> str:
+                if not text:
+                    return ''
+                text_lower = text.lower()
+                normalized = unicodedata.normalize('NFD', text_lower)
+                return normalized.encode('ascii', 'ignore').decode('ascii')
+            
+            search_normalized = normalize_text(search)
+            def matches_search(row):
+                fields_to_check = [
+                    str(row.get('tournament_name', '')),
+                    str(row.get('market_name', '')),
+                    str(row.get('outcome_name', '')),
+                    str(row.get('result', '')),
+                    str(row.get('odds', '')),
+                    str(row.get('stake', '')),
+                    str(row.get('payout', '')),
+                    str(row.get('model_market', '')),
+                ]
+                for field in fields_to_check:
+                    field_normalized = normalize_text(field)
+                    if search_normalized in field_normalized:
+                        return True
+                return False
+            bets_df_count = bets_df_count[bets_df_count.apply(matches_search, axis=1)]
+            total_count = len(bets_df_count)
+        else:
+            total_count = 0
+    else:
+        total_count = db.get_bet_history_count(
+            result=result,
+            market_name=market_name,
+            outcome_name=outcome_name,
+            tournament_name=tournament_name,
+            date_from=date_from,
+            date_to=date_to
+        )
     
     return {
         "bets": bets,
@@ -380,6 +474,124 @@ async def export_bets(
         )
     
     return JSONResponse(content={"bets": bets})
+
+
+@app.get("/api/bets/top-confidence")
+async def get_top_confidence_bet(
+    sort_by: str = Query(default="confidence", pattern="^(confidence|ev)$", description="Sort by 'confidence' (probability) or 'ev' (expected value)"),
+    limit: int = Query(default=1, ge=1, le=10, description="Number of top bets to return")
+) -> Dict[str, Any]:
+    """
+    Get the most confident bet(s) for today.
+    
+    Queries fixtures for today's date, finds value bets across all active models,
+    and returns the top bet(s) sorted by confidence (probability) or expected value.
+    """
+    db = get_db()
+    version_manager = get_versioning()
+    markets = ['1x2', 'over_under', 'btts']
+    
+    # Get today's date
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    # Get fixtures for today
+    fixtures = db.get_fixtures(from_date=today, to_date=today)
+    
+    if len(fixtures) == 0:
+        return {
+            "bets": [],
+            "count": 0,
+            "message": "No fixtures found for today"
+        }
+    
+    all_value_bets = []
+    
+    # Process each market
+    for market in markets:
+        try:
+            # Get active model version
+            active_version = version_manager.get_active_version(domain='betting', market=market)
+            if not active_version:
+                continue
+            
+            model_path = active_version.get('model_path')
+            if not model_path or not Path(model_path).exists():
+                continue
+            
+            # Load model
+            predictor = BettingPredictor(market=market)
+            predictor.load(model_path)
+            
+            if not predictor.is_trained:
+                continue
+            
+            # Create value bet engine
+            engine = ValueBetEngine(predictor, db, ev_threshold=0.0)  # Use 0 threshold to get all bets
+            
+            # Find value bets for today's fixtures
+            fixture_ids = fixtures['fixture_id'].tolist()
+            value_bets = engine.find_value_bets(fixture_ids=fixture_ids, market=market)
+            
+            if len(value_bets) > 0:
+                all_value_bets.append(value_bets)
+        
+        except Exception as e:
+            # Log error but continue with other markets
+            continue
+    
+    if len(all_value_bets) == 0:
+        return {
+            "bets": [],
+            "count": 0,
+            "message": "No value bets found for today"
+        }
+    
+    # Combine all value bets
+    combined_bets = pd.concat(all_value_bets, ignore_index=True) if len(all_value_bets) > 0 else pd.DataFrame()
+    
+    if len(combined_bets) == 0:
+        return {
+            "bets": [],
+            "count": 0,
+            "message": "No value bets found for today"
+        }
+    
+    # Sort by specified criteria
+    if sort_by == "ev":
+        combined_bets = combined_bets.sort_values('expected_value', ascending=False)
+    else:  # default to confidence (probability)
+        combined_bets = combined_bets.sort_values('probability', ascending=False)
+    
+    # Get top N bets
+    top_bets = combined_bets.head(limit)
+    
+    # Convert to list of dicts and enrich with tournament_name from fixtures
+    bets = []
+    fixtures_dict = {row['fixture_id']: row for _, row in fixtures.iterrows()}
+    
+    for _, bet_row in top_bets.iterrows():
+        fixture_id = bet_row.get('fixture_id', '')
+        fixture_info = fixtures_dict.get(fixture_id, {})
+        
+        bets.append({
+            "fixture_id": fixture_id,
+            "home_team": bet_row.get('home_team', ''),
+            "away_team": bet_row.get('away_team', ''),
+            "start_time": bet_row.get('start_time', ''),
+            "market": bet_row.get('market', ''),
+            "outcome": bet_row.get('outcome', ''),
+            "odds": float(bet_row.get('odds', 0)),
+            "probability": float(bet_row.get('probability', 0)),
+            "expected_value": float(bet_row.get('expected_value', 0)),
+            "bookmaker": bet_row.get('bookmaker', ''),
+            "tournament_name": fixture_info.get('tournament_name', '')
+        })
+    
+    return {
+        "bets": bets,
+        "count": len(bets),
+        "sort_by": sort_by
+    }
 
 
 # =============================================================================
@@ -600,8 +812,12 @@ async def get_trading_status() -> Dict[str, Any]:
     scheduler = get_scheduler()
     status = scheduler.get_status()
     
+    current_task = status.get("current_task", "")
+    is_trading_task = current_task in ["trading_collection", "trading_training", "trading_cycle", "trading_full_run"]
+    
     return {
         "enabled": config.TRADING_CONFIG.get("enabled", False),
+        "current_task": current_task if is_trading_task else None,
         "last_collection": status.get("last_trading_collection"),
         "last_collection_duration_seconds": status.get("last_trading_collection_duration_seconds"),
         "watchlist": config.TRADING_CONFIG.get("watchlist", {}),
@@ -626,6 +842,53 @@ async def trigger_trading_cycle() -> Dict[str, Any]:
     scheduler = get_scheduler()
     result = scheduler.trigger_trading_cycle()
     return result
+
+
+@app.post("/api/trading/full")
+async def trigger_full_trading_cycle() -> Dict[str, Any]:
+    """Trigger full trading cycle (collection + training + cycle)."""
+    scheduler = get_scheduler()
+    result = scheduler.trigger_full_trading_cycle()
+    return result
+
+
+@app.post("/api/trading/daemon/start")
+async def start_trading_daemon(request: DaemonStartRequest = DaemonStartRequest()) -> Dict[str, Any]:
+    """Start trading daemon mode."""
+    scheduler = get_scheduler()
+    status = scheduler.get_status()
+    
+    if status.get("trading_daemon_running"):
+        return {
+            "success": False,
+            "error": "Trading daemon is already running"
+        }
+    
+    # Start daemon in background thread
+    def run_daemon():
+        try:
+            scheduler.start_trading_daemon(interval_seconds=request.interval_seconds)
+        except Exception as e:
+            broadcast_log("error", f"Trading daemon error: {e}")
+    
+    thread = threading.Thread(target=run_daemon, daemon=True)
+    thread.start()
+    
+    return {
+        "success": True,
+        "message": f"Trading daemon started with {request.interval_seconds}s interval"
+    }
+
+
+@app.post("/api/trading/daemon/stop")
+async def stop_trading_daemon() -> Dict[str, Any]:
+    """Stop trading daemon mode."""
+    scheduler = get_scheduler()
+    scheduler.stop_trading_daemon()
+    return {
+        "success": True,
+        "message": "Trading daemon stop signal sent"
+    }
 
 
 @app.get("/api/trading/portfolio")

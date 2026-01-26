@@ -2,7 +2,7 @@
 
 ## Overview
 
-Probability calibration is a critical component for profitable betting prediction systems. This document explains why calibration matters, how it's implemented in Arbihawk, and the research evidence supporting its importance.
+Probability calibration is a critical component for profitable prediction systems. This document explains why calibration matters, how it's implemented in Arbihawk, and the research evidence supporting its importance.
 
 ## Why Calibration Matters
 
