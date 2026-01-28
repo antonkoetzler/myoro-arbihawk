@@ -296,6 +296,130 @@ class FeatureEngineer:
             'odds_spread': max_home - min_home
         }
     
+    def _get_rest_days(self, team_id: str, current_match_date: str) -> float:
+        """
+        Calculate rest days (days between team's last match and current match).
+        
+        Args:
+            team_id: Team ID to check
+            current_match_date: ISO format datetime string of current match
+            
+        Returns:
+            Number of days since last match (0 if no previous match, or if calculation fails)
+        """
+        try:
+            completed = self._completed_cache
+            if completed is None or len(completed) == 0:
+                return 0.0
+            
+            # Parse current match date
+            current_dt = pd.to_datetime(current_match_date, errors='coerce')
+            if pd.isna(current_dt):
+                return 0.0
+            
+            # Build team index lazily on first access
+            if self._team_match_index is not None and team_id not in self._team_match_index:
+                self._team_match_index[team_id] = completed[
+                    (completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)
+                ]
+            
+            # Get team's previous matches (before current match)
+            if self._team_match_index is not None and team_id in self._team_match_index:
+                team_data = self._team_match_index[team_id]
+                previous_matches = team_data[team_data['start_time'] < current_match_date]
+            else:
+                mask = ((completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)) & \
+                       (completed['start_time'] < current_match_date)
+                previous_matches = completed.loc[mask]
+            
+            if len(previous_matches) == 0:
+                return 0.0  # No previous matches
+            
+            # Get most recent match date
+            previous_matches = previous_matches.sort_values('start_time')
+            last_match_date = previous_matches.iloc[-1]['start_time']
+            last_match_dt = pd.to_datetime(last_match_date, errors='coerce')
+            
+            if pd.isna(last_match_dt):
+                return 0.0
+            
+            # Calculate days difference
+            days_diff = (current_dt - last_match_dt).total_seconds() / (24 * 3600)
+            
+            # Return as float, ensure non-negative
+            return max(0.0, float(days_diff))
+        except Exception:
+            # Return 0 on any error
+            return 0.0
+    
+    def _get_temporal_features(self, start_time: str) -> Dict[str, float]:
+        """
+        Extract temporal features from start_time.
+        
+        Args:
+            start_time: ISO format datetime string (e.g., "2024-01-15T15:30:00")
+            
+        Returns:
+            Dict with temporal features:
+            - day_of_week: 0=Monday, 6=Sunday
+            - hour: Hour of day (0-23)
+            - is_weekend: 1 if Saturday/Sunday, 0 otherwise
+            - time_period: 0=morning (6-12), 1=afternoon (12-18), 2=evening (18-24), 3=night (0-6)
+        """
+        try:
+            # Parse datetime string - handle various formats
+            if isinstance(start_time, str):
+                # Try ISO format first (most common)
+                if 'T' in start_time:
+                    dt = pd.to_datetime(start_time, errors='coerce')
+                else:
+                    # Try other common formats
+                    dt = pd.to_datetime(start_time, errors='coerce', format='%Y-%m-%d %H:%M:%S')
+                    if pd.isna(dt):
+                        dt = pd.to_datetime(start_time, errors='coerce')
+            else:
+                dt = pd.to_datetime(start_time, errors='coerce')
+            
+            if pd.isna(dt):
+                # Default values if parsing fails
+                return {
+                    'day_of_week': 0.0,  # Monday
+                    'hour': 15.0,  # 3 PM
+                    'is_weekend': 0.0,
+                    'time_period': 1.0  # Afternoon
+                }
+            
+            day_of_week = dt.dayofweek  # 0=Monday, 6=Sunday
+            hour = dt.hour
+            
+            # Weekend: Saturday (5) or Sunday (6)
+            is_weekend = 1.0 if day_of_week >= 5 else 0.0
+            
+            # Time periods: morning (6-12), afternoon (12-18), evening (18-24), night (0-6)
+            if 6 <= hour < 12:
+                time_period = 0.0  # Morning
+            elif 12 <= hour < 18:
+                time_period = 1.0  # Afternoon
+            elif 18 <= hour < 24:
+                time_period = 2.0  # Evening
+            else:  # 0 <= hour < 6
+                time_period = 3.0  # Night
+            
+            return {
+                'day_of_week': float(day_of_week),
+                'hour': float(hour),
+                'is_weekend': is_weekend,
+                'time_period': time_period
+            }
+        except Exception:
+            # Default values on any error
+            return {
+                'day_of_week': 0.0,
+                'hour': 15.0,
+                'is_weekend': 0.0,
+                'time_period': 1.0
+            }
+    
     def create_features(self, fixture_id: str) -> pd.Series:
         """
         Create feature vector for a single fixture.
@@ -338,6 +462,9 @@ class FeatureEngineer:
         home_perf = self._get_home_away_perf_from_cache(home_team_id, start_time, is_home=True)
         away_perf = self._get_home_away_perf_from_cache(away_team_id, start_time, is_home=False)
         odds_feat = self._get_odds_from_cache(fixture_id)
+        temporal_feat = self._get_temporal_features(start_time)
+        home_rest_days = self._get_rest_days(home_team_id, start_time)
+        away_rest_days = self._get_rest_days(away_team_id, start_time)
         
         # Combine all features
         features = {
@@ -361,7 +488,13 @@ class FeatureEngineer:
             'avg_home_odds': odds_feat['avg_home_odds'],
             'avg_draw_odds': odds_feat['avg_draw_odds'],
             'avg_away_odds': odds_feat['avg_away_odds'],
-            'odds_spread': odds_feat['odds_spread']
+            'odds_spread': odds_feat['odds_spread'],
+            'day_of_week': temporal_feat['day_of_week'],
+            'hour': temporal_feat['hour'],
+            'is_weekend': temporal_feat['is_weekend'],
+            'time_period': temporal_feat['time_period'],
+            'home_rest_days': home_rest_days,
+            'away_rest_days': away_rest_days
         }
         
         return pd.Series(features)

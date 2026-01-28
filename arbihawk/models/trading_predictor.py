@@ -16,6 +16,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 from .predictor import BasePredictor
 from .versioning import ModelVersionManager
+from .hyperparameter_tuning import TradingHyperparameterTuner
 from data.database import Database
 import config
 
@@ -57,8 +58,7 @@ class TradingPredictor(BasePredictor):
             learning_rate=0.1,
             random_state=42,
             objective='binary:logistic',
-            eval_metric='logloss',
-            use_label_encoder=False
+            eval_metric='logloss'
         )
         
         # Regression model for magnitude prediction (optional)
@@ -69,6 +69,8 @@ class TradingPredictor(BasePredictor):
         self.cv_std = 0.0
         self.training_metrics = {}
         self.feature_importance = {}
+        self.hyperparameters = None  # Best hyperparameters from tuning
+        self.tuning_metrics = {}  # Tuning metrics (best Sharpe, etc.)
         
         # Calibration (optional)
         self.calibrator = None
@@ -104,6 +106,35 @@ class TradingPredictor(BasePredictor):
         
         # Convert labels to numpy array
         y = labels.values if isinstance(labels, pd.Series) else labels
+        
+        # Check for hyperparameter tuning configuration
+        tuning_config = getattr(config, 'TRADING_HYPERPARAMETER_TUNING_CONFIG', {})
+        
+        # Hyperparameter tuning (if enabled)
+        if tuning_config.get("enabled", False) and dates is not None and len(dates) == len(features):
+            tuner = TradingHyperparameterTuner(
+                strategy=self.strategy,
+                search_space=tuning_config.get("search_space", "small"),
+                min_samples=tuning_config.get("min_samples", 300),
+                n_trials=tuning_config.get("n_trials"),
+                log_callback=log_callback,
+                n_jobs=tuning_config.get("n_jobs", 1),
+                timeout=tuning_config.get("timeout"),
+                early_stopping_patience=tuning_config.get("early_stopping_patience")
+            )
+            best_params = tuner.tune(features, labels, dates, symbols=symbols)
+            
+            if best_params:
+                # Update model with best hyperparameters
+                self.model = XGBClassifier(**best_params)
+                self.hyperparameters = best_params
+                self.tuning_metrics = {
+                    'best_sharpe': tuner.get_best_score(),
+                    'n_trials': tuner.n_trials,
+                    'search_space': tuner.search_space
+                }
+                if log_callback:
+                    log_callback("info", f"  Using tuned hyperparameters (Sharpe: {tuner.get_best_score():.4f})")
         
         # Split data for validation
         test_size = 0.2

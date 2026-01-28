@@ -4,6 +4,8 @@ Automated trading system for stocks and cryptocurrency using ML-driven signal ge
 
 **📖 New to trading? Start with the [Usage Guide](trading-usage.md)**
 
+**Domain:** Trading (Stocks & Crypto)
+
 ## Overview
 
 The trading system provides:
@@ -221,6 +223,49 @@ Fixed dollar amount per trade regardless of stop-loss distance.
 
 Fixed percentage of portfolio per trade.
 
+## Feature Engineering
+
+The trading system extracts **technical indicators and strategy-specific features** for each asset:
+
+**Base Technical Indicators (16 features):**
+- **RSI** (Relative Strength Index): Momentum oscillator (14-period default)
+- **MACD**: Moving Average Convergence Divergence (12, 26, 9) + signal + histogram
+- **Moving Averages**: SMA 20, 50, 200; EMA 12, 26
+- **Bollinger Bands**: Upper, middle, lower bands + width (20-period, 2 std dev)
+- **ATR** (Average True Range): Volatility measure (14-period) + normalized
+- **Volume**: Volume SMA (20-period) + volume ratio
+
+**Momentum Strategy Features (13 additional features):**
+- Price returns: 1d, 5d, 20d, 60d
+- Volume changes: 1d, 5d, 20d
+- Volatility: 20-day rolling standard deviation
+- RSI momentum: 5-day change
+- Price vs. moving averages: Distance to SMA20, SMA50
+- Momentum score: Composite momentum indicator
+
+**Swing Trading Features (14 additional features):**
+- RSI conditions: Oversold, overbought, neutral
+- MACD signals: Bullish/bearish cross, above/below signal
+- Price position: Above/below SMA20, SMA50, SMA200
+- Distance to moving averages
+- Bollinger Band position: Near upper/lower bands
+- Volume conditions: High/low volume
+- Trend indicators: Uptrend, downtrend
+
+**Volatility Breakout Features (8 additional features):**
+- Bollinger Band width percentile
+- Bollinger squeeze detection
+- ATR percentile
+- Low volatility detection
+- Historical volatility
+- Volume surge detection
+- Breakout bias: Up/down direction
+
+**Total Features by Strategy:**
+- **Momentum**: 29 features (16 base + 13 momentum)
+- **Swing**: 30 features (16 base + 14 swing)
+- **Volatility**: 37 features (16 base + 13 momentum + 8 volatility)
+
 ## Training Models
 
 Models are automatically trained during the trading cycle. They can also be trained manually:
@@ -232,6 +277,43 @@ Models are automatically trained during the trading cycle. They can also be trai
 - **Trading: Train Models** (`Ctrl+Shift+P` → "Tasks: Run Task")
 
 Training creates versioned models in `models/saved/trading/`.
+
+**Model Training Details:**
+- **Algorithm**: XGBoost classifier
+- **Prediction Target**: Direction (up/down) for next N days (strategy-specific horizon)
+- **Cross-validation**: Temporal split (training data always before test data)
+- **Hyperparameter Tuning**: Optional, optimizes for Sharpe ratio (configurable)
+- **Model Versioning**: Automatic versioning with performance tracking
+
+**Hyperparameter Tuning** (optional):
+- Uses Optuna for automated hyperparameter optimization
+- Optimizes for Sharpe ratio (risk-adjusted returns)
+- Temporal cross-validation (ensures training data is always before test data)
+- Configurable search space (small/medium/large)
+- Early stopping if no improvement
+- Parallel execution support
+- Default: **Disabled** (enable in `config/automation.json`)
+
+**Configuration** (`config/automation.json` → `trading_hyperparameter_tuning`):
+```json
+{
+  "enabled": false,  // Set to true to enable tuning
+  "search_space": "small",  // 'small', 'medium', or 'large'
+  "n_trials": null,  // null = auto (15/30/60), or specify number
+  "n_jobs": 1,  // 1 = sequential, -1 = all CPUs, N = N workers
+  "timeout": null,  // Maximum seconds (null = no timeout)
+  "early_stopping_patience": 10,  // Stop if no improvement in N trials
+  "min_samples": 300  // Minimum samples required for tuning
+}
+```
+
+**Performance Impact:**
+- **Small search space**: ~30-45 minutes per strategy (15 trials × 2-3 min/trial)
+- **With parallelization (n_jobs=4)**: ~8-12 minutes per strategy
+- **Medium search space**: ~60-90 minutes per strategy (30 trials)
+- **Large search space**: ~120-180 minutes per strategy (60 trials)
+
+**Recommendation:** Enable tuning when you have 10,000+ training samples per strategy for best results.
 
 ## Performance Metrics
 

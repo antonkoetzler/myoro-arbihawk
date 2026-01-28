@@ -101,7 +101,10 @@ class HyperparameterTuner:
     def __init__(self, market: str, search_space: str = 'medium',
                  min_samples: int = 300, n_trials: Optional[int] = None,
                  log_callback: Optional[Callable[[str, str], None]] = None,
-                 db: Optional[Database] = None):
+                 db: Optional[Database] = None,
+                 n_jobs: int = 1,
+                 timeout: Optional[float] = None,
+                 early_stopping_patience: Optional[int] = None):
         """
         Initialize hyperparameter tuner.
         
@@ -112,6 +115,9 @@ class HyperparameterTuner:
             n_trials: Number of Optuna trials (None = auto based on search_space)
             log_callback: Optional callback for logging
             db: Database instance (required for betting evaluation)
+            n_jobs: Number of parallel jobs (1 = sequential, -1 = all CPUs)
+            timeout: Maximum time in seconds (None = no timeout)
+            early_stopping_patience: Stop if no improvement in last N trials (None = disabled)
         """
         self.market = market
         self.search_space = search_space
@@ -125,16 +131,22 @@ class HyperparameterTuner:
             ev_threshold=config.EV_THRESHOLD,
             market=market
         )
+        self.n_jobs = n_jobs
+        self.timeout = timeout
+        self.early_stopping_patience = early_stopping_patience
         
-        # Set n_trials based on search_space if not specified
+        # Set n_trials based on search_space if not specified (reduced for performance)
         if n_trials is None:
             if search_space == 'small':
-                n_trials = 20
+                n_trials = 15  # Reduced from 20
             elif search_space == 'medium':
-                n_trials = 50
+                n_trials = 30  # Reduced from 50
             else:  # large
-                n_trials = 100
+                n_trials = 60  # Reduced from 100
         self.n_trials = n_trials
+        
+        # Track consecutive zero-bet trials for warning
+        self._consecutive_zero_bet_trials = 0
     
     def _log(self, level: str, message: str):
         """Log a message."""
@@ -220,6 +232,11 @@ class HyperparameterTuner:
         rois = []
         total_bets = 0
         split_details = []
+        early_exit = False
+        
+        # Log trial start for better visibility
+        if self.log_callback:
+            self.log_callback("info", f"Trial {trial.number}: Starting evaluation...")
         
         for split_idx, (train_idx, test_idx) in enumerate(splitter.split(X, y, groups=dates), 1):
             # Split data
@@ -285,18 +302,58 @@ class HyperparameterTuner:
                     'win_rate': win_rate,
                     'test_samples': len(X_test)
                 })
+                
+                # Report intermediate value after each split for incremental pruning
+                # Use negative ROI (since Optuna minimizes, this maximizes ROI)
+                trial.report(-roi, split_idx)
+                
+                # Check if trial should be pruned based on intermediate results
+                if trial.should_prune():
+                    if self.log_callback:
+                        self.log_callback("info",
+                            f"Trial {trial.number} split {split_idx}: Pruned by pruner (ROI: {roi*100:+.2f}%, Bets: {bets_count})")
+                    trial.set_user_attr('total_bets', total_bets)
+                    trial.set_user_attr('split_details', split_details)
+                    trial.set_user_attr('early_exit', True)
+                    trial.set_user_attr('mean_roi', np.mean(rois) if rois else 0.0)
+                    raise optuna.TrialPruned()
+                
+                # Early exit: If first split has 0 bets, prune immediately (before other splits)
+                # This saves significant time when no value bets are found
+                if split_idx == 1 and bets_count == 0:
+                    if self.log_callback:
+                        self.log_callback("warning",
+                            f"Trial {trial.number} split 1: No value bets found (0 bets). "
+                            f"Pruning trial immediately to save time. "
+                            f"This may indicate EV threshold ({config.EV_THRESHOLD:.1%}) too high or insufficient odds data.")
+                    early_exit = True
+                    # Record this split for logging purposes
+                    trial.set_user_attr('total_bets', 0)
+                    trial.set_user_attr('split_details', split_details)
+                    trial.set_user_attr('early_exit', True)
+                    trial.set_user_attr('mean_roi', 0.0)
+                    # Prune the trial - this will stop evaluation and mark it as pruned
+                    raise optuna.TrialPruned()
+            except optuna.TrialPruned:
+                # Re-raise pruning exceptions
+                raise
             except Exception as e:
                 # If evaluation fails, log and use a very negative ROI to discourage this trial
                 if self.log_callback:
                     self.log_callback("warning", 
                         f"Trial {trial.number} split {split_idx} evaluation failed: {e}")
-                rois.append(-1.0)
+                roi = -1.0
+                rois.append(roi)
                 split_details.append({
                     'split': split_idx,
-                    'roi': -1.0,
+                    'roi': roi,
                     'bets': 0,
                     'error': str(e)
                 })
+                # Report the bad value for pruning
+                trial.report(-roi, split_idx)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
                 continue
         
         if len(rois) == 0:
@@ -313,17 +370,34 @@ class HyperparameterTuner:
         trial.set_user_attr('mean_roi', mean_roi)
         trial.set_user_attr('total_bets', total_bets)
         trial.set_user_attr('split_details', split_details)
+        trial.set_user_attr('early_exit', early_exit)
         
-        # Log warning if no bets were placed (ROI will be 0.0)
-        if total_bets == 0 and self.log_callback:
-            self.log_callback("warning", 
-                f"Trial {trial.number}: No value bets found (ROI=0.0%). "
-                f"This may indicate EV threshold too high or insufficient odds data.")
+        # Track consecutive zero-bet trials (only if trial completed, not pruned)
+        if total_bets == 0:
+            self._consecutive_zero_bet_trials += 1
+            if self.log_callback:
+                self.log_callback("warning", 
+                    f"Trial {trial.number}: No value bets found across all splits (ROI=0.0%). "
+                    f"This may indicate EV threshold ({config.EV_THRESHOLD:.1%}) too high or insufficient odds data.")
+            
+            # Warn if multiple consecutive trials have 0 bets
+            if self._consecutive_zero_bet_trials >= 3 and self.log_callback:
+                self.log_callback("warning",
+                    f"WARNING: {self._consecutive_zero_bet_trials} consecutive trials with 0 bets. "
+                    f"This suggests a systemic issue. Possible causes: "
+                    f"1) EV threshold ({config.EV_THRESHOLD:.1%}) is too high, "
+                    f"2) Missing odds data in database, "
+                    f"3) Model predictions are too conservative. "
+                    f"Consider checking odds data availability or lowering EV threshold.")
+        else:
+            # Reset counter when we find bets
+            self._consecutive_zero_bet_trials = 0
         
-        # Report intermediate value for pruning
-        trial.report(-mean_roi, 0)  # Report negative for pruning logic
+        # Final report (though we already reported incrementally)
+        # This ensures the final value is recorded
+        trial.report(-mean_roi, len(rois))
         
-        # Check for pruning
+        # Final pruning check (though unlikely to prune here if we got this far)
         if trial.should_prune():
             raise optuna.TrialPruned()
         
@@ -365,24 +439,95 @@ class HyperparameterTuner:
             fixture_ids = pd.Series([None] * len(X))
             self._log("warning", "No fixture_ids provided. Betting evaluation may be less accurate.")
         
-        # Warn about time
+        # Validate odds data availability before starting
+        # Check if we have odds data for at least some fixtures
+        if fixture_ids is not None and len(fixture_ids) > 0:
+            valid_fixture_ids = fixture_ids.dropna()
+            if len(valid_fixture_ids) > 0:
+                # Sample a few fixture IDs to check for odds
+                sample_ids = valid_fixture_ids.head(min(10, len(valid_fixture_ids)))
+                odds_available = 0
+                for fid in sample_ids:
+                    odds = self.db.get_odds(fixture_id=fid)
+                    if len(odds) > 0:
+                        odds_available += 1
+                
+                if odds_available == 0:
+                    self._log("warning",
+                        f"No odds data found for sampled fixtures. "
+                        f"Hyperparameter tuning may result in 0 bets for all trials. "
+                        f"Consider running data collection first.")
+                elif odds_available < len(sample_ids) * 0.5:
+                    self._log("warning",
+                        f"Limited odds data available ({odds_available}/{len(sample_ids)} sampled fixtures have odds). "
+                        f"Some trials may have 0 bets.")
+            else:
+                self._log("warning",
+                    f"All fixture_ids are None/NaN. Betting evaluation will use date-based matching, "
+                    f"which may be less accurate and could result in 0 bets.")
+        
+        # Reset consecutive zero-bet counter at start of tuning
+        self._consecutive_zero_bet_trials = 0
+        
+        # Warn about time (estimate based on trials and parallelization)
+        # Ensure n_jobs is at least 1 for calculation
+        effective_n_jobs = max(1, abs(self.n_jobs)) if self.n_jobs != -1 else 1  # -1 means all CPUs, estimate as 1 for time calc
+        estimated_minutes = (self.n_trials * 3) / effective_n_jobs  # ~3 min per trial
+        if self.timeout and self.timeout > 0:
+            estimated_minutes = min(estimated_minutes, self.timeout / 60)
+        
         self._log("info", 
                  f"Starting hyperparameter tuning ({self.search_space} search space, {self.n_trials} trials)...")
+        if self.n_jobs == -1:
+            self._log("info", "Using all available CPUs for parallel processing")
+        elif self.n_jobs > 1:
+            self._log("info", f"Using {self.n_jobs} parallel workers")
+        if self.early_stopping_patience:
+            self._log("info", f"Early stopping enabled (patience: {self.early_stopping_patience} trials)")
+        if self.timeout and self.timeout > 0:
+            self._log("info", f"Timeout: {self.timeout/60:.1f} minutes")
         self._log("warning", 
-                 f"This may take 30-60 minutes. Progress will be logged periodically.")
+                 f"Estimated time: ~{estimated_minutes:.0f} minutes. Progress will be logged periodically.")
         
         try:
             # Create Optuna study (minimize negative ROI = maximize ROI)
+            # Use MedianPruner with lower startup trials for faster pruning
+            # n_startup_trials: number of trials before pruning starts (lower = prune sooner)
+            # n_warmup_steps: minimum steps before pruning (1 = can prune after first split)
             study = optuna.create_study(
                 direction='minimize',  # Minimize negative ROI (maximizes ROI)
                 study_name=f'hyperparameter_tuning_{self.market}',
-                pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10)
+                pruner=optuna.pruners.MedianPruner(n_startup_trials=3, n_warmup_steps=1)
             )
             
-            # Custom callback to log trial progress
+            # Track best ROI for early stopping
+            best_roi_history = []
+            trials_since_improvement = 0
+            
+            # Custom callback to log trial progress and handle early stopping
             def trial_callback(study: optuna.Study, trial: optuna.Trial) -> None:
-                """Log trial completion with formatted output."""
+                """Log trial completion with formatted output and check early stopping."""
+                nonlocal best_roi_history, trials_since_improvement
+                
                 trial_num = trial.number
+                
+                # Handle pruned trials - log briefly and skip detailed logging
+                if trial.state == optuna.trial.TrialState.PRUNED:
+                    early_exit = trial.user_attrs.get('early_exit', False)
+                    total_bets = trial.user_attrs.get('total_bets', 0)
+                    if early_exit and total_bets == 0:
+                        # Already logged when pruned, just skip
+                        return
+                    elif early_exit:
+                        # Pruned for other reason, log briefly
+                        self._log("info", f"Trial {trial_num + 1}/{self.n_trials}: Pruned (Bets: {total_bets})")
+                        return
+                    else:
+                        # Pruned by pruner, log briefly
+                        self._log("info", f"Trial {trial_num + 1}/{self.n_trials}: Pruned by pruner")
+                        return
+                
+                # Only log completed trials (not pruned)
                 mean_roi = trial.user_attrs.get('mean_roi', 0.0)
                 total_bets = trial.user_attrs.get('total_bets', 0)
                 split_details = trial.user_attrs.get('split_details', [])
@@ -401,23 +546,44 @@ class HyperparameterTuner:
                 # Format key params as readable string
                 params_str = ', '.join([f"{k}={v}" for k, v in key_params.items()])
                 
-                # Get best trial so far
-                best_trial = study.best_trial
-                best_roi = -best_trial.value if best_trial else 0.0
-                best_trial_num = best_trial.number if best_trial else 0
+                # Get best trial so far (only from completed trials)
+                completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+                if len(completed_trials) > 0:
+                    best_trial = min(completed_trials, key=lambda t: t.value)
+                    best_roi = -best_trial.value
+                    best_trial_num = best_trial.number
+                else:
+                    best_trial = None
+                    best_roi = 0.0
+                    best_trial_num = -1
+                
+                # Track best ROI history for early stopping
+                if len(best_roi_history) == 0 or best_roi > best_roi_history[-1]:
+                    best_roi_history.append(best_roi)
+                    trials_since_improvement = 0
+                else:
+                    trials_since_improvement += 1
                 
                 # Calculate progress percentage
+                completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
                 progress_pct = ((trial_num + 1) / self.n_trials) * 100
                 
                 # Log trial completion with progress
                 roi_pct = mean_roi * 100
                 # Format ROI with sign
                 roi_str = f"{roi_pct:+.2f}%" if roi_pct != 0.0 else "0.00%"
-                self._log("info", 
-                    f"Trial {trial_num + 1}/{self.n_trials} ({progress_pct:.0f}%) | "
-                    f"ROI: {roi_str} | "
-                    f"Bets: {total_bets} | "
-                    f"Params: {params_str}")
+                
+                # Only log if trial has bets (skip 0-bet completed trials to reduce noise)
+                if total_bets > 0:
+                    self._log("info", 
+                        f"Trial {trial_num + 1}/{self.n_trials} ({progress_pct:.0f}%) | "
+                        f"ROI: {roi_str} | "
+                        f"Bets: {total_bets} | "
+                        f"Params: {params_str}")
+                else:
+                    # Log briefly for 0-bet completed trials (should be rare if pruning works)
+                    self._log("warning",
+                        f"Trial {trial_num + 1}/{self.n_trials}: Completed with 0 bets (ROI: {roi_str})")
                 
                 # Log if this is a new best
                 if trial_num == best_trial_num:
@@ -430,19 +596,53 @@ class HyperparameterTuner:
                         self._log("info", 
                             f"  >> New best! ROI improved to {best_roi*100:+.2f}%")
                     # If same value, don't log "new best" (all trials have same ROI)
+                
+                # Early stopping check
+                if (self.early_stopping_patience is not None and 
+                    trials_since_improvement >= self.early_stopping_patience and
+                    trial_num >= 5):  # Require at least 5 trials before early stopping
+                    self._log("warning",
+                        f"Early stopping: No improvement in last {trials_since_improvement} trials. "
+                        f"Best ROI: {best_roi*100:+.2f}%")
+                    study.stop()
             
             # Run optimization with callback
+            # Ensure n_jobs is valid (Optuna accepts -1 for all CPUs, or positive integer)
+            effective_n_jobs = self.n_jobs if self.n_jobs == -1 or self.n_jobs > 0 else 1
+            effective_timeout = self.timeout if self.timeout and self.timeout > 0 else None
+            
             study.optimize(
                 lambda trial: self._objective(trial, X, y, dates, fixture_ids, label_encoder),
                 n_trials=self.n_trials,
+                timeout=effective_timeout,
+                n_jobs=effective_n_jobs,
                 show_progress_bar=False,  # We'll log manually
                 callbacks=[trial_callback]
             )
             
-            # Get best parameters
-            self.best_params = study.best_params.copy()
-            # best_value is negative ROI, so convert back to positive
-            self.best_score = -study.best_value  # Convert back to positive ROI
+            # Get best parameters (handle case where all trials were pruned)
+            try:
+                if len(study.trials) == 0:
+                    self._log("warning", "No trials completed. All trials may have been pruned.")
+                    return None
+                
+                # Find best completed trial (not pruned)
+                completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+                if len(completed_trials) == 0:
+                    self._log("warning", 
+                        "No completed trials. All trials were pruned. "
+                        "This likely indicates all hyperparameter combinations resulted in 0 bets. "
+                        "Consider: 1) Lowering EV threshold, 2) Running data collection, 3) Checking odds data availability.")
+                    return None
+                
+                # Get best trial from completed ones
+                best_trial = min(completed_trials, key=lambda t: t.value)
+                self.best_params = best_trial.params.copy()
+                # best_value is negative ROI, so convert back to positive
+                self.best_score = -best_trial.value  # Convert back to positive ROI
+            except Exception as e:
+                self._log("error", f"Failed to get best parameters: {e}")
+                return None
             
             # Log results
             self._log("success", 
@@ -474,4 +674,272 @@ class HyperparameterTuner:
     
     def get_best_score(self) -> Optional[float]:
         """Get best ROI achieved during tuning."""
+        return self.best_score
+
+
+class TradingHyperparameterTuner:
+    """
+    Hyperparameter tuning for trading prediction models using Optuna.
+    Optimizes for Sharpe ratio with temporal cross-validation.
+    """
+    
+    def __init__(self, strategy: str, search_space: str = 'medium',
+                 min_samples: int = 300, n_trials: Optional[int] = None,
+                 log_callback: Optional[Callable[[str, str], None]] = None,
+                 n_jobs: int = 1,
+                 timeout: Optional[float] = None,
+                 early_stopping_patience: Optional[int] = None):
+        """
+        Initialize trading hyperparameter tuner.
+        
+        Args:
+            strategy: Trading strategy ('momentum', 'swing', 'volatility')
+            search_space: Size of search space ('small', 'medium', 'large')
+            min_samples: Minimum samples required for tuning
+            n_trials: Number of Optuna trials (None = auto based on search_space)
+            log_callback: Optional callback for logging
+            n_jobs: Number of parallel jobs (1 = sequential, -1 = all CPUs)
+            timeout: Maximum time in seconds (None = no timeout)
+            early_stopping_patience: Stop if no improvement in last N trials (None = disabled)
+        """
+        self.strategy = strategy
+        self.search_space = search_space
+        self.min_samples = min_samples
+        self.log_callback = log_callback
+        self.best_params = None
+        self.best_score = None
+        self.n_jobs = n_jobs
+        self.timeout = timeout
+        self.early_stopping_patience = early_stopping_patience
+        
+        # Set n_trials based on search_space if not specified
+        if n_trials is None:
+            if search_space == 'small':
+                n_trials = 15
+            elif search_space == 'medium':
+                n_trials = 30
+            else:  # large
+                n_trials = 60
+        self.n_trials = n_trials
+    
+    def _log(self, level: str, message: str):
+        """Log a message."""
+        if self.log_callback:
+            self.log_callback(level, message)
+        else:
+            print(f"[{level.upper()}] {message}")
+    
+    def _get_search_space(self, trial: optuna.Trial) -> Dict[str, Any]:
+        """Get hyperparameter search space for this trial."""
+        if self.search_space == 'small':
+            return {
+                'n_estimators': trial.suggest_int('n_estimators', 50, 200, step=50),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
+                'subsample': trial.suggest_float('subsample', 0.7, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.7, 1.0)
+            }
+        elif self.search_space == 'medium':
+            return {
+                'n_estimators': trial.suggest_int('n_estimators', 50, 250, step=25),
+                'max_depth': trial.suggest_int('max_depth', 3, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.3, log=True),
+                'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
+                'min_child_weight': trial.suggest_int('min_child_weight', 1, 7),
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 1.5),
+                'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 2.0)
+            }
+        else:  # large
+            return {
+                'n_estimators': trial.suggest_int('n_estimators', 50, 300, step=25),
+                'max_depth': trial.suggest_int('max_depth', 3, 10),
+                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.3, log=True),
+                'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
+                'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 2.0),
+                'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 3.0),
+                'gamma': trial.suggest_float('gamma', 0.0, 1.0)
+            }
+    
+    def _calculate_sharpe_ratio(self, returns: pd.Series) -> float:
+        """Calculate Sharpe ratio from returns series."""
+        if len(returns) == 0 or returns.std() == 0:
+            return 0.0
+        return returns.mean() / returns.std() if returns.std() > 0 else 0.0
+    
+    def _objective(self, trial: optuna.Trial, X: pd.DataFrame, y: pd.Series,
+                   dates: pd.Series, symbols: Optional[pd.Series] = None) -> float:
+        """
+        Optuna objective function: maximize Sharpe ratio (returns negative Sharpe since Optuna minimizes).
+        
+        Args:
+            trial: Optuna trial
+            X: Features
+            y: Labels (binary: 1=up, 0=down)
+            dates: Timestamps for temporal splitting
+            symbols: Symbol names (optional)
+            
+        Returns:
+            Negative Sharpe ratio (to minimize, which maximizes Sharpe)
+        """
+        # Get hyperparameters for this trial
+        params = self._get_search_space(trial)
+        params.update({
+            'random_state': 42,
+            'objective': 'binary:logistic',
+            'eval_metric': 'logloss',
+            'verbosity': 0
+        })
+        
+        # Temporal cross-validation
+        splitter = TemporalSplitter(n_splits=5, test_size=0.2)
+        sharpe_ratios = []
+        split_details = []
+        
+        for split_idx, (train_idx, test_idx) in enumerate(splitter.split(X, y, groups=dates), 1):
+            # Split data
+            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+            dates_test = dates.iloc[test_idx]
+            
+            # Check minimum samples
+            if len(X_train) < self.min_samples or len(X_test) < 10:
+                continue
+            
+            # Train model
+            model = XGBClassifier(**params)
+            model.fit(X_train, y_train)
+            
+            # Predict probabilities
+            y_proba = model.predict_proba(X_test)[:, 1]
+            
+            # Calculate returns based on predictions
+            # For simplicity, assume we take positions when probability > 0.5
+            # Returns = (actual_direction - 0.5) * 2 * prediction_confidence
+            # This approximates trading returns
+            predicted_direction = (y_proba > 0.5).astype(int)
+            actual_direction = y_test.values
+            
+            # Calculate returns: correct prediction = positive return, wrong = negative
+            # Use prediction confidence (probability) as position size
+            returns = np.where(
+                predicted_direction == actual_direction,
+                y_proba * 0.02,  # 2% return for correct prediction (scaled by confidence)
+                -y_proba * 0.01  # -1% return for wrong prediction (scaled by confidence)
+            )
+            
+            returns_series = pd.Series(returns)
+            sharpe = self._calculate_sharpe_ratio(returns_series)
+            sharpe_ratios.append(sharpe)
+            
+            split_details.append({
+                'split': split_idx,
+                'sharpe': sharpe,
+                'test_samples': len(X_test),
+                'accuracy': (predicted_direction == actual_direction).mean()
+            })
+            
+            # Report intermediate value
+            trial.report(-sharpe, split_idx)
+            
+            # Check if trial should be pruned
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+        
+        if len(sharpe_ratios) == 0:
+            return -1.0  # Very negative if no valid splits
+        
+        # Average Sharpe ratio across splits
+        avg_sharpe = np.mean(sharpe_ratios)
+        return -avg_sharpe  # Negative because Optuna minimizes
+    
+    def tune(self, X: pd.DataFrame, y: pd.Series, dates: pd.Series,
+             symbols: Optional[pd.Series] = None) -> Optional[Dict[str, Any]]:
+        """
+        Run hyperparameter tuning.
+        
+        Args:
+            X: Features
+            y: Labels
+            dates: Timestamps for temporal splitting
+            symbols: Symbol names (optional)
+            
+        Returns:
+            Best hyperparameters found, or None if tuning failed
+        """
+        if len(X) < self.min_samples:
+            self._log("warning", 
+                     f"Insufficient samples ({len(X)} < {self.min_samples}). Skipping hyperparameter tuning.")
+            return None
+        
+        try:
+            self._log("info", 
+                     f"Starting hyperparameter tuning for {self.strategy} strategy "
+                     f"({self.n_trials} trials, {self.search_space} search space)...")
+            
+            # Create study
+            study = optuna.create_study(
+                direction='minimize',  # We return negative Sharpe, so minimize = maximize Sharpe
+                pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=2)
+            )
+            
+            # Add early stopping callback if enabled
+            callbacks = []
+            if self.early_stopping_patience is not None:
+                callbacks.append(
+                    optuna.study.MaxTrialsCallback(
+                        self.n_trials,
+                        mode='min'
+                    )
+                )
+            
+            # Run optimization
+            study.optimize(
+                lambda trial: self._objective(trial, X, y, dates, symbols),
+                n_trials=self.n_trials,
+                n_jobs=self.n_jobs,
+                timeout=self.timeout,
+                callbacks=callbacks,
+                show_progress_bar=False
+            )
+            
+            if len(study.trials) == 0:
+                self._log("warning", "No trials completed. Using default hyperparameters.")
+                return None
+            
+            # Get best parameters
+            self.best_params = study.best_params
+            self.best_score = -study.best_value  # Convert back to positive Sharpe
+            
+            self._log("info", 
+                     f"Hyperparameter tuning completed. Best Sharpe ratio: {self.best_score:.4f}")
+            
+            # Format best hyperparameters
+            best_params_formatted = []
+            for key in ['n_estimators', 'max_depth', 'learning_rate', 'subsample', 
+                       'colsample_bytree', 'min_child_weight', 'reg_alpha', 'reg_lambda', 'gamma']:
+                if key in self.best_params:
+                    value = self.best_params[key]
+                    if isinstance(value, float):
+                        value = round(value, 4)
+                    best_params_formatted.append(f"{key}={value}")
+            
+            self._log("info", 
+                     f"Best hyperparameters: {', '.join(best_params_formatted)}")
+            
+            return self.best_params
+            
+        except Exception as e:
+            self._log("error", 
+                     f"Hyperparameter tuning failed: {e}. Using default hyperparameters.")
+            return None
+    
+    def get_best_params(self) -> Optional[Dict[str, Any]]:
+        """Get best hyperparameters found during tuning."""
+        return self.best_params
+    
+    def get_best_score(self) -> Optional[float]:
+        """Get best Sharpe ratio achieved during tuning."""
         return self.best_score

@@ -117,9 +117,12 @@ BACKUP_CONFIG = _automation_config.get("backup", {
 
 # Hyperparameter tuning configuration
 HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("hyperparameter_tuning", {
-    "enabled": True,
-    "search_space": "medium",  # 'small', 'medium', or 'large'
-    "min_samples": 300
+    "enabled": False,  # Disabled until sufficient data (10k+ samples recommended)
+    "search_space": "small",  # 'small', 'medium', or 'large' (changed default to 'small' for faster tuning)
+    "min_samples": 300,
+    "n_jobs": 1,  # Number of parallel workers (1 = sequential, -1 = all CPUs)
+    "timeout": None,  # Maximum time in seconds (None = no timeout)
+    "early_stopping_patience": 10  # Stop if no improvement in last N trials (None = disabled)
 })
 
 # Trading configuration (stocks/crypto)
@@ -149,6 +152,16 @@ TRADING_CONFIG = _config.get("trading", {
     "historical_backfill_days": 365
 })
 
+# Trading hyperparameter tuning configuration
+TRADING_HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("trading_hyperparameter_tuning", {
+    "enabled": False,  # Disabled until sufficient data (10k+ samples recommended)
+    "search_space": "small",  # 'small', 'medium', or 'large'
+    "min_samples": 300,
+    "n_jobs": 1,  # Number of parallel workers (1 = sequential, -1 = all CPUs)
+    "timeout": None,  # Maximum time in seconds (None = no timeout)
+    "early_stopping_patience": 10  # Stop if no improvement in last N trials (None = disabled)
+})
+
 
 def reload_config():
     """Reload configuration from files."""
@@ -157,7 +170,7 @@ def reload_config():
     global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, SCRAPER_ARGS, SCRAPER_WORKERS
     global FAKE_MONEY_CONFIG, MODEL_VERSIONING_CONFIG, METRICS_CONFIG, BACKUP_CONFIG
     global AUTO_BET_AFTER_TRAINING, BOOKMAKER_MARGINS, HYPERPARAMETER_TUNING_CONFIG
-    global TRADING_CONFIG
+    global TRADING_CONFIG, TRADING_HYPERPARAMETER_TUNING_CONFIG
     
     _config = _get_config()
     _automation_config = _get_automation_config()
@@ -217,10 +230,22 @@ def reload_config():
     METRICS_CONFIG = _automation_config.get("metrics", {})
     BACKUP_CONFIG = _automation_config.get("backup", {})
     HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("hyperparameter_tuning", {
-        "enabled": True,
-        "search_space": "medium",
-        "min_samples": 300
+        "enabled": False,  # Disabled until sufficient data (10k+ samples recommended)
+        "search_space": "small",  # Changed default to 'small' for faster tuning
+        "min_samples": 300,
+        "n_jobs": 1,
+        "timeout": None,
+        "early_stopping_patience": 10
     })
+    TRADING_HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("trading_hyperparameter_tuning", {
+        "enabled": False,
+        "search_space": "small",
+        "min_samples": 300,
+        "n_jobs": 1,
+        "timeout": None,
+        "early_stopping_patience": 10
+    })
+    
     TRADING_CONFIG = _config.get("trading", {
         "enabled": False,
         "watchlist": {

@@ -2,7 +2,14 @@
 
 ## Overview
 
-The training system builds machine learning models to predict betting outcomes. It extracts features from historical match data and trains XGBoost models for multiple betting markets.
+The training system builds machine learning models for two domains:
+
+- **Betting Domain**: Predicts sports betting outcomes (1x2, Over/Under, BTTS) - **This guide**
+- **Trading Domain**: Predicts stock/crypto price direction (Momentum, Swing, Volatility strategies) - See [Trading Guide](trading.md#training-models)
+
+Both domains use XGBoost classifiers with feature engineering, probability calibration, and optional hyperparameter tuning.
+
+**Domain:** Betting
 
 ## Training Pipeline
 
@@ -18,15 +25,31 @@ The training process requires historical match data with:
 
 ### 2. Feature Engineering
 
-For each completed match, the system extracts features:
+For each completed match, the system extracts **27 features**:
 
-- **Team Form**: Win rate, average goals scored/conceded, form points (last 5 matches)
-- **Head-to-Head**: Historical results between the two teams
-- **Home/Away Performance**: Team performance at home vs away venues
-- **Odds Features**: Average odds, odds spread across bookmakers
-- **Temporal Features**: Day of week, time of day, season progression
+**Team Performance Features (16 features):**
+- **Team Form** (last 5 matches): Win rate, average goals scored/conceded, form points (4 features × 2 teams = 8)
+- **Head-to-Head**: Historical wins, draws, average goals (5 features)
+- **Home/Away Performance**: Win rate and average goals at home/away (4 features)
+
+**Market Features (4 features):**
+- **Odds Features**: Average odds for home/draw/away, odds spread across bookmakers
+
+**Temporal Features (4 features):**
+- **Day of week**: 0 (Monday) to 6 (Sunday)
+- **Hour**: Hour of day (0-23)
+- **Is weekend**: 1 if Saturday/Sunday, 0 otherwise
+- **Time period**: 0=morning (6-12), 1=afternoon (12-18), 2=evening (18-24), 3=night (0-6)
+
+**Fatigue Features (2 features):**
+- **Rest days**: Days since team's last match (home and away teams)
+
+**Additional Features (1 feature):**
+- **Odds spread**: Difference between max and min odds for home team
 
 These features are automatically computed from the database and normalized for model training.
+
+**Note:** For trading domain features, see [Trading Guide](trading.md#feature-engineering).
 
 ### 3. Model Training
 
@@ -41,6 +64,7 @@ Each model uses **XGBoost** with:
 - **Probability calibration** (isotonic regression or Platt scaling)
 - Calibration metrics tracking (Brier Score, Expected Calibration Error)
 - Class balancing for imbalanced datasets
+- **Hyperparameter tuning** (optional, configurable)
 - Model persistence to disk
 
 **Calibration** ensures predicted probabilities are well-calibrated, which is critical for profitable betting. The system automatically:
@@ -48,6 +72,52 @@ Each model uses **XGBoost** with:
 - Trains model on training set
 - Calibrates probabilities on separate calibration set
 - Tracks calibration quality metrics
+
+**Hyperparameter Tuning** (optional):
+- Uses Optuna for automated hyperparameter optimization
+- **Betting Domain**: Optimizes for ROI/profitability (not just accuracy)
+- **Trading Domain**: Optimizes for Sharpe ratio (risk-adjusted returns)
+- Temporal cross-validation (ensures training data is always before test data)
+- Configurable search space (small/medium/large)
+- Early stopping if no improvement
+- Parallel execution support
+- Default: **Disabled** (enable in `config/automation.json`)
+
+**Betting Configuration** (`config/automation.json` → `hyperparameter_tuning`):
+```json
+{
+  "enabled": false,  // Set to true to enable tuning
+  "search_space": "small",  // 'small', 'medium', or 'large'
+  "n_trials": null,  // null = auto (15/30/60), or specify number
+  "n_jobs": 1,  // 1 = sequential, -1 = all CPUs, N = N workers
+  "timeout": null,  // Maximum seconds (null = no timeout)
+  "early_stopping_patience": 10,  // Stop if no improvement in N trials
+  "min_samples": 300  // Minimum samples required for tuning
+}
+```
+
+**Performance Impact:**
+- **Small search space**: ~1.1 hours (3 markets × 15 trials × 3 min/trial)
+- **With parallelization (n_jobs=4)**: ~17 minutes
+- **Medium search space**: ~2.2 hours (3 markets × 30 trials)
+- **Large search space**: ~4.4 hours (3 markets × 60 trials)
+
+**Trading Configuration** (`config/automation.json` → `trading_hyperparameter_tuning`):
+```json
+{
+  "enabled": false,  // Set to true to enable tuning
+  "search_space": "small",  // 'small', 'medium', or 'large'
+  "n_trials": null,  // null = auto (15/30/60), or specify number
+  "n_jobs": 1,  // 1 = sequential, -1 = all CPUs, N = N workers
+  "timeout": null,  // Maximum seconds (null = no timeout)
+  "early_stopping_patience": 10,  // Stop if no improvement in N trials
+  "min_samples": 300  // Minimum samples required for tuning
+}
+```
+
+**Recommendation:** 
+- **Betting**: Enable tuning when you have 10,000+ training samples for best results
+- **Trading**: Enable tuning when you have 10,000+ training samples per strategy for best results
 
 ### 4. Model Storage
 

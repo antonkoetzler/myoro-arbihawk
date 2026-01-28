@@ -15,13 +15,17 @@ from typing import Dict, Any, List, Optional, Callable
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Thread-local storage for domain context
+# This ensures each thread (betting vs trading) has its own domain
+_thread_local = threading.local()
+
 from data.database import Database
 from data.ingestion import DataIngestionService
+from data.stock_ingestion import StockIngestionService
+from data.crypto_ingestion import CryptoIngestionService
 from data.matchers import ScoreMatcher
 from data.settlement import BetSettlement
 from data.backup import DatabaseBackup
-from data.stock_ingestion import StockIngestionService
-from data.crypto_ingestion import CryptoIngestionService
 from monitoring.metrics import MetricsCollector
 from automation.betting import BettingService
 import config
@@ -61,8 +65,9 @@ class AutomationScheduler:
         self.betting_service = BettingService(self.db, log_callback=self._log)
         
         # Trading services (lazy initialization)
-        self._stock_service: Optional[StockIngestionService] = None
-        self._crypto_service: Optional[CryptoIngestionService] = None
+        self._ingestion_service: Optional[DataIngestionService] = None
+        self._stock_service = None
+        self._crypto_service = None
         
         # Trading state
         self._last_trading_collection = None
@@ -82,10 +87,12 @@ class AutomationScheduler:
         self._stop_task_event = threading.Event()  # For stopping individual tasks
         self._logs = deque(maxlen=1000)
         self._current_task = None
+        # Note: _current_domain is now stored in thread-local storage to prevent
+        # race conditions when betting and trading run in parallel
         self._last_collection = None
         self._last_training = None
         self._last_betting = None
-        self._log_callback: Optional[Callable[[str, str], None]] = None
+        self._log_callback: Optional[Callable[[str, str, str], None]] = None  # Updated to accept domain
         
         # Performance metrics
         self._last_collection_duration = None
@@ -99,6 +106,8 @@ class AutomationScheduler:
         self.betano_script = self.scrapers_dir / "src" / "sportsbooks" / "betano.py"
         self.flashscore_script = self.scrapers_dir / "src" / "sports_data" / "flashscore.py"
         self.livescore_script = self.scrapers_dir / "src" / "sports_data" / "livescore.py"
+        self.stocks_script = self.scrapers_dir / "src" / "stocks" / "stock_scraper.py"
+        self.crypto_script = self.scrapers_dir / "src" / "crypto" / "crypto_scraper.py"
         
         # Scrapers venv Python interpreter
         if platform.system() == "Windows":
@@ -106,34 +115,104 @@ class AutomationScheduler:
         else:
             self.scrapers_python = self.scrapers_dir / "venv" / "bin" / "python"
     
-    def set_log_callback(self, callback: Callable[[str, str], None]) -> None:
+    def set_log_callback(self, callback: Callable[[str, str, str], None]) -> None:
         """Set a callback function to be called when logs are added.
         
         Args:
-            callback: Function that takes (level, message) and handles the log
+            callback: Function that takes (level, message, domain) and handles the log
         """
         self._log_callback = callback
     
-    def _log(self, level: str, message: str) -> None:
-        """Log a message with timestamp."""
+    def _get_current_domain(self) -> str:
+        """Get current domain from thread-local storage."""
+        return getattr(_thread_local, 'domain', 'betting')
+    
+    def _set_current_domain(self, domain: str) -> None:
+        """Set current domain in thread-local storage."""
+        _thread_local.domain = domain
+    
+    def _log(self, level: str, message: str, domain: Optional[str] = None) -> None:
+        """Log a message with timestamp and domain.
+        
+        Args:
+            level: Log level (info, warning, error, success)
+            message: Log message
+            domain: Domain identifier (betting, trading). If None, uses thread-local domain.
+        """
+        # Use provided domain or fall back to thread-local domain (safe for parallel execution)
+        log_domain = domain if domain is not None else self._get_current_domain()
+        
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d ~ %H:%M:%S")
         entry = {
             "timestamp": timestamp,
             "level": level,
-            "message": message
+            "message": message,
+            "domain": log_domain
         }
         self._logs.append(entry)
         
-        # Also print to console
-        print(f"[{timestamp}] [{level.upper()}] {message}")
+        # Also print to console with domain prefix
+        # Handle encoding errors on Windows (charmap can't encode emojis)
+        try:
+            domain_prefix = f"[{log_domain.upper()}]" if log_domain else ""
+            print(f"[{timestamp}] {domain_prefix} [{level.upper()}] {message}")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            # If message contains characters that can't be encoded, sanitize it
+            try:
+                safe_message = message.encode('ascii', errors='replace').decode('ascii')
+                domain_prefix = f"[{log_domain.upper()}]" if log_domain else ""
+                print(f"[{timestamp}] {domain_prefix} [{level.upper()}] {safe_message}")
+            except:
+                # Last resort: just print a generic message
+                print(f"[{timestamp}] [{level.upper()}] [ENCODING ERROR: Message contains unsupported characters]")
         
         # Call WebSocket broadcast callback if set
+        # IMPORTANT: Always pass domain - no fallback to 2-arg call
         if self._log_callback:
             try:
-                self._log_callback(level, message)
-            except Exception:
-                pass  # Don't let callback errors affect logging
+                # Domain is REQUIRED for proper log separation
+                self._log_callback(level, message, log_domain)
+            except Exception as e:
+                # Log the error but don't crash
+                try:
+                    print(f"[ERROR] Log callback failed: {e}. Domain: {log_domain}, Message: {message[:50]}")
+                except:
+                    pass  # Don't let callback errors affect logging
+    
+    def _store_run_history(self, run_type: str, started_at: datetime,
+                          result: Dict[str, Any]) -> None:
+        """
+        Store run history in database.
+        
+        Args:
+            run_type: Type of run (collection, training, betting, etc.)
+            started_at: Datetime when run started
+            result: Result dictionary from the run
+        """
+        try:
+            completed_at = datetime.now().isoformat()
+            duration = result.get("duration_seconds")
+            if duration is None and "start_time" in result:
+                # Calculate duration if not provided
+                duration = (datetime.now() - started_at).total_seconds()
+            
+            self.db.insert_run_history(
+                run_type=run_type,
+                domain=self._get_current_domain(),
+                started_at=started_at.isoformat(),
+                completed_at=completed_at,
+                duration_seconds=duration,
+                success=result.get("success", False),
+                stopped=result.get("stopped", False),
+                skipped=result.get("skipped", False),
+                skip_reason=result.get("reason"),
+                result_data=result,
+                errors=result.get("errors", [])
+            )
+        except Exception as e:
+            # Don't let run history storage failures break the run
+            self._log("warning", f"Failed to store run history: {e}")
     
     def get_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get recent logs."""
@@ -371,6 +450,11 @@ class AutomationScheduler:
             self._log("error", f"Collection failed: {e}")
         
         finally:
+            # Store run history before clearing task
+            try:
+                self._store_run_history("collection", started_at, result)
+            except Exception:
+                pass  # Don't let history storage break the run
             self._current_task = None
         
         return result
@@ -656,8 +740,10 @@ print(json.dumps(league_ids))
             Result dict with training stats
         """
         self._current_task = "training"
+        self._set_current_domain("betting")  # Betting training
         self._stop_task_event.clear()  # Reset stop flag
         start_time = time.time()
+        started_at = datetime.now()
         
         result = {
             "success": False,
@@ -753,6 +839,11 @@ print(json.dumps(league_ids))
             self._log("error", f"Training failed: {e}")
         
         finally:
+            # Store run history before clearing task
+            try:
+                self._store_run_history("training", started_at, result)
+            except Exception:
+                pass  # Don't let history storage break the run
             self._current_task = None
         
         return result
@@ -784,12 +875,15 @@ print(json.dumps(league_ids))
         """
         # Store the original task name if we're being called as part of a full_run
         original_task = self._current_task
+        original_domain = self._get_current_domain()
         was_full_run = original_task == "full_run"
         if not was_full_run:
             self._current_task = "full_run"
+            self._set_current_domain("betting")  # Betting full run
         
         self._log("info", "Starting full cycle with betting...")
         full_run_start = time.time()
+        started_at = datetime.now()
         
         try:
             # Temporarily restore full_run task name before each phase
@@ -797,6 +891,7 @@ print(json.dumps(league_ids))
             collection_result = self.run_collection()
             if was_full_run:
                 self._current_task = "full_run"
+                self._set_current_domain("betting")
             
             # Log collection completion
             if collection_result.get("success"):
@@ -822,6 +917,7 @@ print(json.dumps(league_ids))
             training_result = self.run_training()
             if was_full_run:
                 self._current_task = "full_run"
+                self._set_current_domain("betting")
             
             # Log training completion
             if training_result.get("success"):
@@ -848,6 +944,7 @@ print(json.dumps(league_ids))
             betting_result = self.run_betting(require_auto_betting=True)
             if was_full_run:
                 self._current_task = "full_run"
+                self._set_current_domain("betting")
             
             # Log betting completion
             if betting_result.get("success"):
@@ -882,13 +979,27 @@ print(json.dumps(league_ids))
                 "duration_seconds": full_run_duration
             }
         finally:
+            # Store run history for full run
+            try:
+                self._store_run_history("full_run", started_at, {
+                    "collection": collection_result,
+                    "training": training_result,
+                    "betting": betting_result,
+                    "success": result.get("success", False),
+                    "duration_seconds": result.get("duration_seconds"),
+                    "stopped": result.get("stopped", False)
+                })
+            except Exception:
+                pass  # Don't let history storage break the run
             # Only clear task if we set it (i.e., we were the top-level caller)
             # If called from trigger_full_run, that function's finally block will clear it
             if not was_full_run:
                 self._current_task = None
+                self._set_current_domain(original_domain)
             elif was_full_run and original_task != "full_run":
                 # Restore original if we overwrote something else
                 self._current_task = original_task
+                self._set_current_domain(original_domain)
     
     def trigger_full_run(self) -> Dict[str, Any]:
         """Manually trigger full run (collection + training + betting). Runs in background thread."""
@@ -916,7 +1027,7 @@ print(json.dumps(league_ids))
     
     def start_daemon(self, interval_seconds: int = 21600) -> None:
         """
-        Start scheduler in daemon mode.
+        Start scheduler in daemon mode (betting automation).
         
         Args:
             interval_seconds: Interval between cycles (default: 6 hours)
@@ -927,6 +1038,7 @@ print(json.dumps(league_ids))
         
         self._running = True
         self._stop_event.clear()
+        self._set_current_domain("betting")  # Betting daemon
         
         self._log("info", f"Starting daemon mode (interval: {interval_seconds}s)")
         
@@ -968,6 +1080,7 @@ print(json.dumps(league_ids))
         
         self._trading_daemon_running = True
         self._trading_daemon_stop_event.clear()
+        self._set_current_domain("trading")  # Trading daemon
         
         self._log("info", f"[TRADING] Starting trading daemon mode (interval: {interval_seconds}s)")
         
@@ -1087,8 +1200,10 @@ print(json.dumps(league_ids))
             Dict with collection results
         """
         self._current_task = "trading_collection"
+        self._set_current_domain("trading")  # Trading collection
         self._stop_task_event.clear()
         start_time = time.time()
+        started_at = datetime.now()
         
         result = {
             "success": False,
@@ -1117,23 +1232,45 @@ print(json.dumps(league_ids))
                 result["stopped"] = True
                 return result
             
-            # Collect stocks
+            # Collect stocks using scraper
             stock_watchlist = trading_config.get("watchlist", {}).get("stocks", [])
             if stock_watchlist:
                 self._log("info", f"[TRADING] Collecting {len(stock_watchlist)} stocks...")
-                stock_service = self._get_stock_service()
+                ingestion_service = self._get_ingestion_service()
                 
-                # Check API key status
-                if not stock_service.api_key:
-                    self._log("warning", "[TRADING] No Alpha Vantage API key - using yfinance fallback")
+                # Build scraper command - pass watchlist symbols
+                api_key = trading_config.get("api_keys", {}).get("alpha_vantage", "")
+                cmd = [
+                    str(self.scrapers_python),
+                    str(self.stocks_script)
+                ]
+                if api_key:
+                    cmd.extend(["--api-key", api_key])
+                # Add symbols from watchlist
+                if stock_watchlist:
+                    cmd.extend(["--symbol"] + stock_watchlist)
                 
-                stock_result = stock_service.collect_all()
-                result["stocks"]["collected"] = stock_result.get("collected", 0)
-                result["stocks"]["failed"] = stock_result.get("failed", 0)
-                result["stocks"]["total_prices"] = stock_result.get("total_prices", 0)
+                # Run scraper and ingest
+                stock_ingest_result = ingestion_service.ingest_from_subprocess(
+                    cmd,
+                    "stocks",
+                    timeout=3600,  # 1 hour timeout
+                    log_callback=lambda level, msg: self._log(level, f"[STOCKS] {msg}", "trading"),
+                    stop_event=self._stop_task_event
+                )
                 
-                if stock_result.get("errors"):
-                    result["errors"].extend([f"[STOCK] {e}" for e in stock_result["errors"]])
+                # Parse results from ingested data
+                if stock_ingest_result.get("success"):
+                    # Count successful symbols from ingested data
+                    records = stock_ingest_result.get("records", 0)
+                    # Rough estimate: assume ~250 trading days per symbol
+                    estimated_symbols = max(1, records // 250) if records > 0 else 0
+                    result["stocks"]["collected"] = min(estimated_symbols, len(stock_watchlist))
+                    result["stocks"]["total_prices"] = records
+                    result["stocks"]["failed"] = len(stock_watchlist) - result["stocks"]["collected"]
+                else:
+                    result["stocks"]["failed"] = len(stock_watchlist)
+                    result["errors"].append(f"[STOCKS] {stock_ingest_result.get('error', 'Unknown error')}")
                 
                 self._log("success", f"[TRADING] Stocks: {result['stocks']['collected']}/{len(stock_watchlist)} collected, {result['stocks']['total_prices']} prices")
             else:
@@ -1145,19 +1282,45 @@ print(json.dumps(league_ids))
                 result["stopped"] = True
                 return result
             
-            # Collect crypto
+            # Collect crypto using scraper
             crypto_watchlist = trading_config.get("watchlist", {}).get("crypto", [])
             if crypto_watchlist:
                 self._log("info", f"[TRADING] Collecting {len(crypto_watchlist)} cryptos...")
-                crypto_service = self._get_crypto_service()
+                ingestion_service = self._get_ingestion_service()
                 
-                crypto_result = crypto_service.collect_all()
-                result["crypto"]["collected"] = crypto_result.get("collected", 0)
-                result["crypto"]["failed"] = crypto_result.get("failed", 0)
-                result["crypto"]["total_prices"] = crypto_result.get("total_prices", 0)
+                # Build scraper command - pass watchlist symbols
+                api_key = trading_config.get("api_keys", {}).get("coingecko", "")
+                cmd = [
+                    str(self.scrapers_python),
+                    str(self.crypto_script)
+                ]
+                if api_key:
+                    cmd.extend(["--api-key", api_key])
+                # Add symbols from watchlist
+                if crypto_watchlist:
+                    cmd.extend(["--symbol"] + crypto_watchlist)
                 
-                if crypto_result.get("errors"):
-                    result["errors"].extend([f"[CRYPTO] {e}" for e in crypto_result["errors"]])
+                # Run scraper and ingest
+                crypto_ingest_result = ingestion_service.ingest_from_subprocess(
+                    cmd,
+                    "crypto",
+                    timeout=3600,  # 1 hour timeout
+                    log_callback=lambda level, msg: self._log(level, f"[CRYPTO] {msg}", "trading"),
+                    stop_event=self._stop_task_event
+                )
+                
+                # Parse results from ingested data
+                if crypto_ingest_result.get("success"):
+                    # Count successful symbols from ingested data
+                    records = crypto_ingest_result.get("records", 0)
+                    # Rough estimate: assume ~365 days per symbol
+                    estimated_symbols = max(1, records // 365) if records > 0 else 0
+                    result["crypto"]["collected"] = min(estimated_symbols, len(crypto_watchlist))
+                    result["crypto"]["total_prices"] = records
+                    result["crypto"]["failed"] = len(crypto_watchlist) - result["crypto"]["collected"]
+                else:
+                    result["crypto"]["failed"] = len(crypto_watchlist)
+                    result["errors"].append(f"[CRYPTO] {crypto_ingest_result.get('error', 'Unknown error')}")
                 
                 self._log("success", f"[TRADING] Crypto: {result['crypto']['collected']}/{len(crypto_watchlist)} collected, {result['crypto']['total_prices']} prices")
             else:
@@ -1181,6 +1344,11 @@ print(json.dumps(league_ids))
             self._log("error", f"[TRADING] Collection failed: {e}")
             result["errors"].append(str(e))
         finally:
+            # Store run history before clearing task
+            try:
+                self._store_run_history("trading_collection", started_at, result)
+            except Exception:
+                pass  # Don't let history storage break the run
             self._current_task = None
         
         return result
@@ -1221,8 +1389,10 @@ print(json.dumps(league_ids))
             Result dict with betting stats
         """
         self._current_task = "betting"
+        self._set_current_domain("betting")  # Betting cycle
         self._stop_task_event.clear()
         start_time = time.time()
+        started_at = datetime.now()
         
         result = {
             "success": False,
@@ -1293,6 +1463,11 @@ print(json.dumps(league_ids))
             self._log("error", f"Betting failed: {e}")
         
         finally:
+            # Store run history before clearing task
+            try:
+                self._store_run_history("betting", started_at, result)
+            except Exception:
+                pass  # Don't let history storage break the run
             self._current_task = None
         
         return result
@@ -1377,8 +1552,10 @@ print(json.dumps(league_ids))
             Result dict with training stats
         """
         self._current_task = "trading_training"
+        self._set_current_domain("trading")  # Trading training
         self._stop_task_event.clear()
         start_time = time.time()
+        started_at = datetime.now()
         
         result = {
             "success": False,
@@ -1436,6 +1613,11 @@ print(json.dumps(league_ids))
             self._log("error", f"[TRADING] Training failed: {e}")
             result["errors"].append(str(e))
         finally:
+            # Store run history before clearing task
+            try:
+                self._store_run_history("trading_training", started_at, result)
+            except Exception:
+                pass  # Don't let history storage break the run
             self._current_task = None
         
         return result
@@ -1470,8 +1652,10 @@ print(json.dumps(league_ids))
             Result dict with cycle stats
         """
         self._current_task = "trading_cycle"
+        self._set_current_domain("trading")  # Trading cycle
         self._stop_task_event.clear()
         start_time = time.time()
+        started_at = datetime.now()
         
         result = {
             "success": False,
@@ -1533,6 +1717,11 @@ print(json.dumps(league_ids))
             self._log("error", f"[TRADING] Cycle failed: {e}")
             result["errors"].append(str(e))
         finally:
+            # Store run history before clearing task
+            try:
+                self._store_run_history("trading_cycle", started_at, result)
+            except Exception:
+                pass  # Don't let history storage break the run
             self._current_task = None
         
         return result
@@ -1565,20 +1754,24 @@ print(json.dumps(league_ids))
             Combined result dict
         """
         original_task = self._current_task
+        original_domain = self._get_current_domain()
         was_full_run = original_task == "trading_full_run"
         if not was_full_run:
             self._current_task = "trading_full_run"
+            self._set_current_domain("trading")  # Trading full run
         
         self._log("info", "=" * 60)
         self._log("info", "[TRADING] Starting full cycle (collection + training + cycle)")
         self._log("info", "=" * 60)
         full_run_start = time.time()
+        started_at = datetime.now()
         
         try:
             # Phase 1: Collection
             collection_result = self.run_trading_collection()
             if was_full_run:
                 self._current_task = "trading_full_run"
+                self._set_current_domain("trading")
             
             if collection_result.get("success"):
                 self._log("success", "[TRADING] Collection phase completed successfully")
@@ -1602,6 +1795,7 @@ print(json.dumps(league_ids))
             training_result = self.run_trading_training()
             if was_full_run:
                 self._current_task = "trading_full_run"
+                self._set_current_domain("trading")
             
             if training_result.get("success"):
                 self._log("success", "[TRADING] Training phase completed successfully")
@@ -1625,6 +1819,7 @@ print(json.dumps(league_ids))
             cycle_result = self.run_trading_cycle()
             if was_full_run:
                 self._current_task = "trading_full_run"
+                self._set_current_domain("trading")
             
             if cycle_result.get("success"):
                 self._log("success", "[TRADING] Cycle phase completed successfully")
@@ -1646,10 +1841,24 @@ print(json.dumps(league_ids))
                 "duration_seconds": full_run_duration
             }
         finally:
+            # Store run history for trading full run
+            try:
+                self._store_run_history("trading_full_run", started_at, {
+                    "collection": collection_result,
+                    "training": training_result,
+                    "cycle": cycle_result,
+                    "success": result.get("success", False),
+                    "duration_seconds": result.get("duration_seconds"),
+                    "stopped": result.get("stopped", False)
+                })
+            except Exception:
+                pass  # Don't let history storage break the run
             if not was_full_run:
                 self._current_task = None
+                self._set_current_domain(original_domain)
             elif was_full_run and original_task != "trading_full_run":
                 self._current_task = original_task
+                self._set_current_domain(original_domain)
     
     def trigger_full_trading_cycle(self) -> Dict[str, Any]:
         """Manually trigger full trading cycle (for dashboard). Runs in background thread."""

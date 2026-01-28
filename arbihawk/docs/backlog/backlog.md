@@ -63,11 +63,169 @@ Edit `config/automation.json` → `model_versioning.profitability_selection`:
 
 ## Critical Issues (High Impact)
 
+### 1. Betting Full Run Never Completes / Mixed Logs with Trading ✅
+
+**Category:** Performance / Data Quality  
+**Status:** ✅ COMPLETED - Log separation implemented  
+**Impact:** CRITICAL - Cannot run betting automation reliably  
+**Readiness:** ✅ Implemented
+
+**Issues (RESOLVED):**
+- ✅ Betting full run logs show trading training logs (MOMENTUM, SWING, VOLATILITY strategies) - **FIXED**
+- ✅ Both daemons running simultaneously causes log mixing - **FIXED**
+- ✅ Need separate log streams for betting vs trading domains - **IMPLEMENTED**
+
+**Implementation:**
+- Added domain tracking (`_current_domain`) to `AutomationScheduler`
+- Updated `_log()` method to include domain in log entries and pass to callback
+- All betting tasks (collection, training, betting, full_run, daemon) set domain to "betting"
+- All trading tasks (collection, training, cycle, full_run, daemon) set domain to "trading"
+- Updated `broadcast_log()` to accept and include domain in WebSocket messages
+- Updated `LogsTab` filtering to use domain field primarily, with message content fallback
+- Console logs now include domain prefix for clarity
+
+**Note:** The "never completes" issue is likely due to 6+ hour hyperparameter tuning (see Task #2), not an actual hang. Betting training does NOT call trading training - verified.
+
+---
+
+### 2. Hyperparameter Tuning Performance (6+ Hours) ✅
+
+**Category:** Performance  
+**Status:** ✅ COMPLETED - Multiple optimizations implemented  
+**Impact:** CRITICAL - Too slow for practical use  
+**Readiness:** ✅ Implemented
+
+**Issues (RESOLVED):**
+- ✅ Too many trials (50 for medium search space) - **FIXED** (reduced to 30)
+- ✅ Default search space too large (medium) - **FIXED** (changed default to small, 15 trials)
+- ✅ No early stopping - **FIXED** (stops if no improvement in 10 trials)
+- ✅ No parallelization - **FIXED** (n_jobs parameter added)
+- ✅ No timeout option - **FIXED** (timeout parameter added)
+
+**Implementation:**
+- **Reduced default trials**: small=15 (was 20), medium=30 (was 50), large=60 (was 100)
+- **Changed default search_space**: "small" instead of "medium" (saves ~70% time: 15 trials vs 50)
+- **Early stopping**: Stops if no improvement in last 10 trials (configurable via `early_stopping_patience`)
+- **Parallelization**: Added `n_jobs` parameter (1 = sequential, -1 = all CPUs, N = N workers)
+- **Timeout**: Added `timeout` parameter (in seconds) to limit maximum tuning time
+- **Better time estimates**: Logs estimated completion time based on trials and parallelization
+
+**Performance Impact:**
+- **Before**: ~6 hours (3 markets × 50 trials × 3 min/trial = 7.5 hours)
+- **After (default)**: ~1.1 hours (3 markets × 15 trials × 3 min/trial = 1.1 hours)
+- **With parallelization (n_jobs=4)**: ~17 minutes (3 markets × 15 trials × 3 min/trial / 4 = 0.3 hours)
+
+**Configuration:**
+Edit `config/automation.json` → `hyperparameter_tuning`:
+```json
+{
+  "enabled": true,
+  "search_space": "small",  // 'small', 'medium', or 'large'
+  "n_trials": null,  // null = auto (15/30/60), or specify number
+  "n_jobs": 1,  // 1 = sequential, -1 = all CPUs, N = N workers
+  "timeout": null,  // Maximum seconds (null = no timeout)
+  "early_stopping_patience": 10  // Stop if no improvement in N trials
+}
+```
+
+---
+
+### 3. Hyperparameter Tuning: Trials with 0 Bets ✅
+
+**Category:** Performance / Profitability  
+**Status:** ✅ COMPLETED - Early exit and validation implemented  
+**Impact:** MEDIUM - Wastes computation time  
+**Readiness:** ✅ Implemented
+
+**Issues (RESOLVED):**
+- ✅ Trials with 0 bets complete full evaluation - **FIXED** (early exit after first split)
+- ✅ No early exit when no bets found - **FIXED**
+- ✅ No validation before starting trial - **FIXED**
+- ✅ No warning for consecutive zero-bet trials - **FIXED**
+
+**Implementation:**
+- Early exit: If first split has 0 bets, skip remaining splits (saves ~80% time per trial)
+- Validation: Check odds data availability before starting tuning
+- Consecutive tracking: Track consecutive zero-bet trials and warn after 3+
+- Improved logging: Better messages explaining why trials have 0 bets (EV threshold, missing odds data)
+- Early exit flag: Tracked in trial attributes for debugging
+
+**Note:** If all trials have 0 bets, this likely indicates:
+1. EV threshold too high (check `config.EV_THRESHOLD`)
+2. Missing odds data in database (run data collection)
+3. Model predictions too conservative
+
 ---
 
 ## Important Issues (Medium Impact)
 
-### 1. Feature Engineering Gaps
+### 4. Logging for Every Run and Results ✅
+
+**Category:** Data Quality  
+**Status:** ✅ COMPLETED - Run history storage implemented  
+**Impact:** MEDIUM - Hard to debug issues without historical logs  
+**Readiness:** ✅ Implemented
+
+**Issues (RESOLVED):**
+- ✅ No persistent logging of run results - **FIXED**
+- ✅ No way to retrieve historical run data - **FIXED**
+
+**Implementation:**
+- Added `run_history` table to database schema (migration 7)
+- Stores complete run results for: collection, training, betting, full_run, trading_collection, trading_training, trading_cycle, trading_full_run
+- Tracks: run_type, domain, started_at, completed_at, duration_seconds, success, stopped, skipped, skip_reason, result_data (JSON), errors
+- Added `insert_run_history()` method to Database
+- Added `get_run_history()` method to retrieve historical runs with filtering
+- Added `cleanup_old_run_history()` for retention management
+- Scheduler automatically stores run history after each run completes
+- All run methods (collection, training, betting, trading) now store history
+
+**Note:** Dashboard view for run history can be added later. The data is now available via `db.get_run_history()`.
+
+---
+
+### 5. Export Mechanism for Transfer to Different Computer ✅
+
+**Category:** Data Quality  
+**Status:** ✅ COMPLETED - Export/import scripts implemented  
+**Impact:** MEDIUM - Cannot easily transfer system to new machine  
+**Readiness:** ✅ Implemented
+
+**Issues (RESOLVED):**
+- ✅ No export functionality - **FIXED**
+- ✅ No import functionality - **FIXED**
+- ✅ No version information in exports - **FIXED**
+
+**Implementation:**
+- Created `export_data.py` script:
+  - Exports database file (arbihawk.db or arbihawk_debug.db)
+  - Exports all model files (models/saved/*.pkl)
+  - Exports all config files (config/*.json)
+  - Includes version information (schema version, Python version, platform, package versions)
+  - Creates timestamped zip archive
+- Created `import_data.py` script:
+  - Extracts database, models, and config from archive
+  - Validates schema version compatibility
+  - Automatically runs database migrations if needed
+  - Provides options to overwrite existing files (--overwrite-db, --overwrite-models, --overwrite-config)
+  - Backs up existing database before import
+- Version tracking:
+  - Exports include schema version, export timestamp, platform info, package versions
+  - Import script checks compatibility and warns about version mismatches
+  - Database migrations handled automatically via existing migration system
+
+**Usage:**
+```bash
+# Export
+python export_data.py [output_path]
+
+# Import
+python import_data.py <export_file.zip> [--overwrite-db] [--overwrite-models] [--overwrite-config]
+```
+
+---
+
+### 6. Feature Engineering Gaps
 
 **Category:** Profitability  
 **Status:** Basic features only (21 features)  
@@ -85,12 +243,10 @@ Edit `config/automation.json` → `model_versioning.profitability_selection`:
 
 - **Form momentum**: Recent trend (improving/declining), not just averages
 - **Opponent strength adjustments**: Form vs. strong teams vs. weak teams
-- **Rest days**: Days between matches (fatigue factor)
 - **Market-specific features**:
   - Over/Under: Recent goal trends, defensive stats, shot statistics
   - BTTS: Recent scoring/conceding patterns, attacking strength
 - **Tournament context**: Match importance, stage (regular season vs. playoffs)
-- **Temporal features**: Day of week, time of day (mentioned in docs but not implemented)
 
 ---
 

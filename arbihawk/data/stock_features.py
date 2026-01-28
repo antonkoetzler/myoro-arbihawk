@@ -170,6 +170,58 @@ class StockFeatureEngineer:
         period = period or self.VOLUME_SMA_PERIOD
         return volume.rolling(window=period, min_periods=1).mean()
     
+    def _get_temporal_features(self, timestamp: str) -> Dict[str, float]:
+        """
+        Extract temporal features from timestamp.
+        
+        Args:
+            timestamp: ISO format datetime string or date string
+            
+        Returns:
+            Dict with temporal features:
+            - day_of_week: 0=Monday, 6=Sunday
+            - is_weekend: 1 if Saturday/Sunday, 0 otherwise
+            - month: 1-12
+            - day_of_month: 1-31
+        """
+        try:
+            # Parse datetime string
+            if isinstance(timestamp, str):
+                dt = pd.to_datetime(timestamp, errors='coerce')
+            else:
+                dt = pd.to_datetime(timestamp, errors='coerce')
+            
+            if pd.isna(dt):
+                # Default values if parsing fails
+                return {
+                    'day_of_week': 0.0,  # Monday
+                    'is_weekend': 0.0,
+                    'month': 6.0,  # June
+                    'day_of_month': 15.0
+                }
+            
+            day_of_week = dt.dayofweek  # 0=Monday, 6=Sunday
+            month = dt.month  # 1-12
+            day_of_month = dt.day  # 1-31
+            
+            # Weekend: Saturday (5) or Sunday (6)
+            is_weekend = 1.0 if day_of_week >= 5 else 0.0
+            
+            return {
+                'day_of_week': float(day_of_week),
+                'is_weekend': is_weekend,
+                'month': float(month),
+                'day_of_month': float(day_of_month)
+            }
+        except Exception:
+            # Default values on any error
+            return {
+                'day_of_week': 0.0,
+                'is_weekend': 0.0,
+                'month': 6.0,
+                'day_of_month': 15.0
+            }
+    
     # =========================================================================
     # INDICATOR COMPUTATION FOR SYMBOL
     # =========================================================================
@@ -223,6 +275,20 @@ class StockFeatureEngineer:
         # Volume SMA
         df['volume_sma'] = self.compute_volume_sma(volume)
         df['volume_ratio'] = volume / df['volume_sma'].replace(0, np.nan)
+        
+        # Temporal features
+        if 'timestamp' in df.columns:
+            temporal_features = df['timestamp'].apply(lambda ts: self._get_temporal_features(ts))
+            df['day_of_week'] = temporal_features.apply(lambda x: x['day_of_week'])
+            df['is_weekend'] = temporal_features.apply(lambda x: x['is_weekend'])
+            df['month'] = temporal_features.apply(lambda x: x['month'])
+            df['day_of_month'] = temporal_features.apply(lambda x: x['day_of_month'])
+        else:
+            # Default values if no timestamp
+            df['day_of_week'] = 0.0
+            df['is_weekend'] = 0.0
+            df['month'] = 6.0
+            df['day_of_month'] = 15.0
         
         return df
     
@@ -595,6 +661,11 @@ class StockFeatureEngineer:
             'atr', 'atr_normalized', 'volume_sma', 'volume_ratio'
         ]
         
+        # Temporal features (4 features)
+        temporal_features = [
+            'day_of_week', 'is_weekend', 'month', 'day_of_month'
+        ]
+        
         # Momentum features
         momentum_features = [
             'return_1d', 'return_5d', 'return_20d', 'return_60d',
@@ -620,13 +691,13 @@ class StockFeatureEngineer:
         ]
         
         if strategy == 'momentum':
-            return base_features + momentum_features
+            return base_features + momentum_features + temporal_features
         elif strategy == 'swing':
-            return base_features + swing_features
+            return base_features + swing_features + temporal_features
         elif strategy == 'volatility':
-            return base_features + momentum_features + volatility_features
+            return base_features + momentum_features + volatility_features + temporal_features
         else:
-            return base_features + swing_features
+            return base_features + swing_features + temporal_features
     
     # =========================================================================
     # REAL-TIME FEATURE COMPUTATION
@@ -671,7 +742,7 @@ class StockFeatureEngineer:
         
         # Return latest row features
         latest = df.iloc[-1][available_cols]
-        return latest.fillna(0).infer_objects(copy=False).infer_objects(copy=False)
+        return latest.fillna(0).infer_objects(copy=False)
     
     def compute_features_batch(self, symbols: List[str], asset_type: str,
                                 strategy: str) -> pd.DataFrame:
