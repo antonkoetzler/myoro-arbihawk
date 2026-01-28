@@ -5,7 +5,7 @@ SQLite database for storing fixtures, odds, scores, and betting data.
 import sqlite3
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from datetime import datetime
 import pandas as pd
 from contextlib import contextmanager
@@ -15,7 +15,7 @@ import config
 class Database:
     """SQLite database manager for betting data."""
     
-    SCHEMA_VERSION = 6  # Increment when schema changes
+    SCHEMA_VERSION = 7  # Increment when schema changes
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or config.DB_PATH
@@ -184,6 +184,25 @@ class Database:
                 )
             """)
             
+            # Run history table - stores complete run results for debugging
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS run_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_type TEXT NOT NULL,
+                    domain TEXT NOT NULL DEFAULT 'betting',
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    duration_seconds REAL,
+                    success INTEGER DEFAULT 0,
+                    stopped INTEGER DEFAULT 0,
+                    skipped INTEGER DEFAULT 0,
+                    skip_reason TEXT,
+                    result_data TEXT,
+                    errors TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes for performance
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_start_time ON fixtures(start_time)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_tournament ON fixtures(tournament_id)")
@@ -200,6 +219,8 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_domain_market ON model_versions(domain, market)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_versions_domain_active ON model_versions(domain, market, is_active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_metrics_type_time ON metrics(metric_type, timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_history_type_time ON run_history(run_type, started_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_history_domain_time ON run_history(domain, started_at)")
             
             # Record schema version
             cursor.execute("""
@@ -446,6 +467,41 @@ class Database:
                     
                     # Update schema version
                     cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (6,))
+            except sqlite3.OperationalError as e:
+                # Table might already exist, ignore
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    raise
+        
+        # Migration 7: Add run_history table
+        if current_version < 7:
+            try:
+                # Check if table already exists
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='run_history'")
+                table_exists = cursor.fetchone() is not None
+                
+                if not table_exists:
+                    # Create run_history table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS run_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            run_type TEXT NOT NULL,
+                            domain TEXT NOT NULL DEFAULT 'betting',
+                            started_at TEXT NOT NULL,
+                            completed_at TEXT,
+                            duration_seconds REAL,
+                            success INTEGER DEFAULT 0,
+                            stopped INTEGER DEFAULT 0,
+                            skipped INTEGER DEFAULT 0,
+                            skip_reason TEXT,
+                            result_data TEXT,
+                            errors TEXT,
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_history_type_time ON run_history(run_type, started_at)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_history_domain_time ON run_history(domain, started_at)")
+                    # Update schema version
+                    cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (7,))
             except sqlite3.OperationalError as e:
                 # Table might already exist, ignore
                 if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
@@ -1153,6 +1209,102 @@ class Database:
             cursor.execute("""
                 DELETE FROM metrics 
                 WHERE timestamp < datetime('now', '-' || ? || ' months')
+            """, (retention_months,))
+            return cursor.rowcount
+    
+    # =========================================================================
+    # RUN HISTORY OPERATIONS
+    # =========================================================================
+    
+    def insert_run_history(self, run_type: str, domain: str, started_at: str,
+                          completed_at: Optional[str] = None,
+                          duration_seconds: Optional[float] = None,
+                          success: bool = False, stopped: bool = False,
+                          skipped: bool = False, skip_reason: Optional[str] = None,
+                          result_data: Optional[Dict[str, Any]] = None,
+                          errors: Optional[List[str]] = None) -> int:
+        """
+        Insert a run history record.
+        
+        Args:
+            run_type: Type of run (collection, training, betting, full_run, trading_collection, etc.)
+            domain: Domain (betting or trading)
+            started_at: ISO timestamp when run started
+            completed_at: ISO timestamp when run completed (None if still running)
+            duration_seconds: Duration in seconds
+            success: Whether run succeeded
+            stopped: Whether run was stopped by user
+            skipped: Whether run was skipped
+            skip_reason: Reason for skipping (if skipped)
+            result_data: Full result dictionary as JSON
+            errors: List of error messages
+            
+        Returns:
+            Run history record ID
+        """
+        import json
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            result_json = json.dumps(result_data) if result_data else None
+            errors_json = json.dumps(errors) if errors else None
+            
+            cursor.execute("""
+                INSERT INTO run_history 
+                (run_type, domain, started_at, completed_at, duration_seconds,
+                 success, stopped, skipped, skip_reason, result_data, errors)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                run_type, domain, started_at, completed_at, duration_seconds,
+                1 if success else 0, 1 if stopped else 0, 1 if skipped else 0,
+                skip_reason, result_json, errors_json
+            ))
+            return cursor.lastrowid
+    
+    def get_run_history(self, run_type: Optional[str] = None,
+                        domain: Optional[str] = None,
+                        limit: int = 100,
+                        from_date: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get run history records.
+        
+        Args:
+            run_type: Filter by run type (optional)
+            domain: Filter by domain (optional)
+            limit: Maximum records to return
+            from_date: Filter by start date (ISO format, optional)
+            
+        Returns:
+            DataFrame with run history records
+        """
+        with self._get_connection() as conn:
+            query = "SELECT * FROM run_history WHERE 1=1"
+            params = []
+            
+            if run_type:
+                query += " AND run_type = ?"
+                params.append(run_type)
+            
+            if domain:
+                query += " AND domain = ?"
+                params.append(domain)
+            
+            if from_date:
+                query += " AND started_at >= ?"
+                params.append(from_date)
+            
+            query += " ORDER BY started_at DESC LIMIT ?"
+            params.append(limit)
+            
+            df = pd.read_sql_query(query, conn, params=params)
+            return df
+    
+    def cleanup_old_run_history(self, retention_months: int = 18) -> int:
+        """Delete run history older than retention period."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM run_history 
+                WHERE started_at < datetime('now', '-' || ? || ' months')
             """, (retention_months,))
             return cursor.rowcount
     

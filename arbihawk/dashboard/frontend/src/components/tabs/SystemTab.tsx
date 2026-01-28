@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Database, HelpCircle, X, RotateCcw, AlertTriangle, Copy } from 'lucide-react';
+import { AlertCircle, Database, HelpCircle, X, RotateCcw, AlertTriangle, Copy, Download, Upload } from 'lucide-react';
 import { EmptyState } from '../EmptyState';
 import { Tooltip } from '../Tooltip';
 import { dbStatTooltips } from '../../utils/constants';
@@ -22,6 +22,14 @@ export function SystemTab({ api, showToast }: SystemTabProps) {
   const [isResetting, setIsResetting] = useState(false);
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [overwriteDb, setOverwriteDb] = useState(false);
+  const [overwriteModels, setOverwriteModels] = useState(false);
+  const [overwriteConfig, setOverwriteConfig] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: environment } = useQuery<EnvironmentConfig>({
     queryKey: ['environment'],
@@ -92,6 +100,71 @@ export function SystemTab({ api, showToast }: SystemTabProps) {
       // Error already handled by API layer
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      await api.exportData();
+    } catch (err) {
+      // Error already handled by API layer
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.name.endsWith('.zip')) {
+        showToast('Please select a .zip file', 'error');
+        return;
+      }
+      setSelectedFile(file);
+      setShowImportConfirm(true);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) return;
+    
+    setIsImporting(true);
+    try {
+      const result = await api.importData(selectedFile, overwriteDb, overwriteModels, overwriteConfig);
+      
+      let message = 'Import completed successfully';
+      if (result.schema_warning) {
+        message += `. Warning: ${result.schema_warning}`;
+      }
+      const parts: string[] = [];
+      if (result.imported.models.length > 0 || result.imported.configs.length > 0) {
+        parts.push(`Imported: ${result.imported.models.length} model(s), ${result.imported.configs.length} config file(s)`);
+      }
+      if (result.skipped.models.length > 0 || result.skipped.configs.length > 0) {
+        parts.push(`Skipped: ${result.skipped.models.length} model(s), ${result.skipped.configs.length} config file(s) (already exist)`);
+      }
+      if (parts.length > 0) {
+        message += ` - ${parts.join('; ')}`;
+      }
+      
+      showToast(message, 'success', 15000);
+      setShowImportConfirm(false);
+      setSelectedFile(null);
+      setOverwriteDb(false);
+      setOverwriteModels(false);
+      setOverwriteConfig(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
+      void queryClient.invalidateQueries({ queryKey: ['dbStats'] });
+      void queryClient.invalidateQueries({ queryKey: ['models'] });
+      void queryClient.invalidateQueries({ queryKey: ['bankroll'] });
+    } catch (err) {
+      // Error already handled by API layer
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -385,6 +458,151 @@ export function SystemTab({ api, showToast }: SystemTabProps) {
                   {preserveModels ? ' Model versions will be preserved.' : ' Model versions will also be deleted.'}
                   A backup will be created before resetting.
                 </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Data Export/Import */}
+      <div className='card'>
+        <h3 className='mb-4 text-lg font-semibold flex items-center gap-3'>
+          <Database size={20} />
+          Data Export/Import
+        </h3>
+
+        {/* Export Section */}
+        <div className='mb-6 border-b border-slate-700/50 pb-6'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <h4 className='mb-1 text-sm font-semibold text-slate-300'>
+                Export All Data
+              </h4>
+              <p className='text-xs text-slate-400'>
+                Download a zip file containing database, models, and configuration files for transfer to another computer.
+              </p>
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className='flex items-center gap-2 rounded-lg bg-green-500/20 px-4 py-2 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/30 disabled:opacity-50'
+            >
+              <Download size={16} />
+              {isExporting ? 'Exporting...' : 'Export Data'}
+            </button>
+          </div>
+        </div>
+
+        {/* Import Section */}
+        <div>
+          <div className='flex items-center justify-between'>
+            <div>
+              <h4 className='mb-1 text-sm font-semibold text-slate-300'>
+                Import Data
+              </h4>
+              <p className='text-xs text-slate-400'>
+                Upload an export zip file to restore database, models, and configuration files.
+              </p>
+            </div>
+            <div className='flex items-center gap-2'>
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept='.zip'
+                onChange={handleFileSelect}
+                className='hidden'
+                id='import-file-input'
+              />
+              <label
+                htmlFor='import-file-input'
+                className='flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-500/30 cursor-pointer'
+              >
+                <Upload size={16} />
+                Select File
+              </label>
+            </div>
+          </div>
+
+          {showImportConfirm && selectedFile && (
+            <div className='mt-4 space-y-4'>
+              <div className='rounded-lg border border-blue-500/30 bg-blue-500/10 p-3'>
+                <p className='text-sm font-medium text-blue-200'>
+                  Selected file: {selectedFile.name}
+                </p>
+                <p className='text-xs text-blue-300/80 mt-1'>
+                  Size: {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                </p>
+              </div>
+
+              <div className='space-y-2'>
+                <p className='text-xs font-medium text-slate-300'>Overwrite options:</p>
+                <label className='flex items-center gap-2 text-sm text-slate-300'>
+                  <input
+                    type='checkbox'
+                    checked={overwriteDb}
+                    onChange={(e) => setOverwriteDb(e.target.checked)}
+                    className='rounded border-slate-600 bg-slate-700'
+                  />
+                  Overwrite existing database
+                </label>
+                <label className='flex items-center gap-2 text-sm text-slate-300'>
+                  <input
+                    type='checkbox'
+                    checked={overwriteModels}
+                    onChange={(e) => setOverwriteModels(e.target.checked)}
+                    className='rounded border-slate-600 bg-slate-700'
+                  />
+                  Overwrite existing model files
+                </label>
+                <label className='flex items-center gap-2 text-sm text-slate-300'>
+                  <input
+                    type='checkbox'
+                    checked={overwriteConfig}
+                    onChange={(e) => setOverwriteConfig(e.target.checked)}
+                    className='rounded border-slate-600 bg-slate-700'
+                  />
+                  Overwrite existing config files
+                </label>
+              </div>
+
+              <div className='flex items-start gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3'>
+                <AlertTriangle size={20} className='mt-0.5 text-yellow-500' />
+                <div className='flex-1 text-xs text-yellow-200'>
+                  <p className='font-medium'>Warning: Importing will replace existing data!</p>
+                  <p className='mt-1 text-yellow-300/80'>
+                    {overwriteDb && 'Database will be replaced. '}
+                    {overwriteModels && 'Model files will be replaced. '}
+                    {overwriteConfig && 'Config files will be replaced. '}
+                    {!overwriteDb && !overwriteModels && !overwriteConfig && 'Existing files will be skipped. '}
+                    A backup of the existing database will be created automatically.
+                  </p>
+                </div>
+              </div>
+
+              <div className='flex items-center gap-2'>
+                <button
+                  onClick={handleImport}
+                  disabled={isImporting}
+                  className='flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50'
+                >
+                  {isImporting ? 'Importing...' : 'Confirm Import'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowImportConfirm(false);
+                    setSelectedFile(null);
+                    setOverwriteDb(false);
+                    setOverwriteModels(false);
+                    setOverwriteConfig(false);
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = '';
+                    }
+                  }}
+                  disabled={isImporting}
+                  className='rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-600 disabled:opacity-50'
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}

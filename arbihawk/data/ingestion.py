@@ -497,10 +497,23 @@ class DataIngestionService:
             elif '[INFO]' in clean_line.upper():
                 log_level = "info"
             
-            # Remove Unicode symbols from the message (keep emojis for readability)
+            # Remove Unicode symbols from the message
+            # On Windows, emojis can cause encoding issues, so we'll remove them too
             message = clean_line
-            # Only remove the TUI symbols, not emojis
+            # Remove TUI symbols and common emojis that cause encoding issues on Windows
             message = message.replace('ℹ', '').replace('✓', '').replace('✗', '').replace('⚠', '')
+            # Remove emojis that cause charmap encoding errors on Windows
+            # Remove emoji ranges and common problematic Unicode characters
+            emoji_pattern = re.compile(
+                "["
+                "\U0001F600-\U0001F64F"  # emoticons
+                "\U0001F300-\U0001F5FF"  # symbols & pictographs
+                "\U0001F680-\U0001F6FF"  # transport & map symbols
+                "\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                "\U00002702-\U000027B0"  # dingbats
+                "\U000024C2-\U0001F251"  # enclosed characters
+                "]+", flags=re.UNICODE)
+            message = emoji_pattern.sub('', message)
             
             # Remove all level prefixes from the message to avoid duplication
             message = re.sub(r'\[?(INFO|WARNING|WARN|ERROR|OK|SUCCESS)\]?\s*', '', message, flags=re.IGNORECASE)
@@ -522,7 +535,17 @@ class DataIngestionService:
         except Exception as e:
             # If logging fails, try to log the error itself (but don't fail completely)
             try:
-                log_callback("error", f"Failed to process scraper line: {str(e)}")
+                # Handle encoding errors when converting exception to string
+                try:
+                    error_msg = str(e)
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    # If exception message has encoding issues, use a safe fallback
+                    error_msg = f"Encoding error: {type(e).__name__}"
+                
+                # Sanitize the error message to remove problematic characters
+                # Replace emojis and other non-ASCII characters that might cause issues
+                safe_error_msg = error_msg.encode('ascii', errors='replace').decode('ascii')
+                log_callback("error", f"Failed to process scraper line: {safe_error_msg}")
             except:
                 pass  # Can't log, give up
     
@@ -613,6 +636,10 @@ class DataIngestionService:
             records = self._ingest_betano(data)
         elif source in ["flashscore", "livescore"]:
             records = self._ingest_match_scores(data, source)
+        elif source == "stocks":
+            records = self._ingest_stocks(data)
+        elif source == "crypto":
+            records = self._ingest_crypto(data)
         else:
             return {
                 "success": False,
@@ -767,6 +794,103 @@ class DataIngestionService:
             scores_inserted += 1
         
         return scores_inserted
+    
+    def _ingest_stocks(self, data: List[Dict]) -> int:
+        """Ingest stock data from scraper JSON into database."""
+        total_prices = 0
+        
+        for stock_result in data:
+            if not stock_result.get("success"):
+                continue  # Skip failed symbols
+            
+            symbol = stock_result.get("symbol")
+            prices = stock_result.get("prices", [])
+            metadata = stock_result.get("metadata", {})
+            
+            # Insert/update stock metadata
+            try:
+                self.db.insert_stock({
+                    "symbol": symbol,
+                    "name": metadata.get("name", symbol),
+                    "sector": metadata.get("sector", ""),
+                    "industry": metadata.get("industry", ""),
+                    "market_cap": metadata.get("market_cap"),
+                    "exchange": metadata.get("exchange", "")
+                })
+            except Exception as e:
+                # Log but continue
+                pass
+            
+            # Insert price history
+            if prices:
+                price_data = []
+                for price in prices:
+                    price_data.append({
+                        "symbol": symbol,
+                        "asset_type": "stock",
+                        "timestamp": price.get("timestamp"),
+                        "open": price.get("open"),
+                        "high": price.get("high"),
+                        "low": price.get("low"),
+                        "close": price.get("close"),
+                        "volume": price.get("volume")
+                    })
+                
+                try:
+                    count = self.db.insert_price_history_batch(price_data)
+                    total_prices += count
+                except Exception as e:
+                    # Log but continue
+                    pass
+        
+        return total_prices
+    
+    def _ingest_crypto(self, data: List[Dict]) -> int:
+        """Ingest crypto data from scraper JSON into database."""
+        total_prices = 0
+        
+        for crypto_result in data:
+            if not crypto_result.get("success"):
+                continue  # Skip failed symbols
+            
+            symbol = crypto_result.get("symbol")
+            prices = crypto_result.get("prices", [])
+            metadata = crypto_result.get("metadata", {})
+            
+            # Insert/update crypto metadata
+            try:
+                self.db.insert_crypto({
+                    "symbol": symbol,
+                    "name": metadata.get("name", symbol),
+                    "market_cap": metadata.get("market_cap")
+                })
+            except Exception as e:
+                # Log but continue
+                pass
+            
+            # Insert price history
+            if prices:
+                price_data = []
+                for price in prices:
+                    price_data.append({
+                        "symbol": symbol,
+                        "asset_type": "crypto",
+                        "timestamp": price.get("timestamp"),
+                        "open": price.get("open"),
+                        "high": price.get("high"),
+                        "low": price.get("low"),
+                        "close": price.get("close"),
+                        "volume": price.get("volume")
+                    })
+                
+                try:
+                    count = self.db.insert_price_history_batch(price_data)
+                    total_prices += count
+                except Exception as e:
+                    # Log but continue
+                    pass
+        
+        return total_prices
 
 
 def main():
@@ -774,7 +898,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Ingest data from scrapers')
-    parser.add_argument('source', choices=['betano', 'flashscore', 'livescore'],
+    parser.add_argument('source', choices=['betano', 'flashscore', 'livescore', 'stocks', 'crypto'],
                         help='Data source')
     parser.add_argument('--file', '-f', type=str,
                         help='Input file path (default: read from stdin)')

@@ -13,6 +13,7 @@ import type {
   ScraperWorkersConfig,
   TriggerAutomationParams,
   EnvironmentConfig,
+  ImportResponse,
 } from '../types';
 
 /**
@@ -27,9 +28,9 @@ export const createApi = (
       const error = (await response
         .json()
         .catch(() => ({ detail: response.statusText }))) as {
-        detail?: string;
-        message?: string;
-      };
+          detail?: string;
+          message?: string;
+        };
       const message =
         error.detail ??
         error.message ??
@@ -261,6 +262,68 @@ export const createApi = (
           target_db: string;
         }>)
         .catch((err) => handleError(err, 'Failed to sync production to debug')),
+
+    exportData: async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/export');
+        if (!response.ok) {
+          const error = (await response.json().catch(() => ({ detail: response.statusText }))) as {
+            detail?: string;
+          };
+          throw new Error(error.detail ?? 'Export failed');
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const contentDisposition = response.headers.get('Content-Disposition');
+        const filename = contentDisposition
+          ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || 'arbihawk_export.zip'
+          : 'arbihawk_export.zip';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        showToast('Export completed successfully', 'success');
+      } catch (err) {
+        handleError(err, 'Failed to export data');
+      }
+    },
+
+    importData: async (
+      file: File,
+      overwriteDb: boolean,
+      overwriteModels: boolean,
+      overwriteConfig: boolean
+    ): Promise<ImportResponse> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('overwrite_db', overwriteDb.toString());
+      formData.append('overwrite_models', overwriteModels.toString());
+      formData.append('overwrite_config', overwriteConfig.toString());
+
+      return fetch('/api/import', {
+        method: 'POST',
+        body: formData,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            const error = (await response.json().catch(() => ({ detail: response.statusText }))) as {
+              detail?: string;
+            };
+            throw new Error(error.detail ?? 'Import failed');
+          }
+          return response.json() as Promise<ImportResponse>;
+        })
+        .then((data) => {
+          if (data.success) {
+            showToast('Import completed successfully', 'success', 10000);
+          }
+          return data;
+        })
+        .catch((err) => handleError(err, 'Failed to import data'));
+    },
 
     // Trading API
     triggerTradingCollection: (): Promise<{ success: boolean; message?: string; error?: string }> =>

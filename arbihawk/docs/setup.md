@@ -87,6 +87,43 @@ All configuration is stored in JSON files (no .env files):
 - **`config/config.json`** - Main settings (database path, EV threshold)
 - **`config/automation.json`** - Automation schedules, scraper args, fake money settings, model versioning
 
+## Export/Import Data
+
+To transfer your Arbihawk installation to a different computer:
+
+### Export
+
+```bash
+python export_data.py [output_path]
+```
+
+Exports database, models, and configuration to a zip archive. If `output_path` is not provided, creates a timestamped file in the current directory.
+
+**What's exported:**
+- Database file (`arbihawk.db` or `arbihawk_debug.db`)
+- All model files (`models/saved/*.pkl`)
+- All configuration files (`config/*.json`)
+- Version information (schema version, Python version, platform, package versions)
+
+### Import
+
+```bash
+python import_data.py <export_file.zip> [--overwrite-db] [--overwrite-models] [--overwrite-config]
+```
+
+Imports data from an export archive. The script will:
+- Validate schema version compatibility
+- Automatically run database migrations if needed
+- Back up existing database before import (if overwriting)
+- Prompt before overwriting existing files (unless flags are used)
+
+**Options:**
+- `--overwrite-db`: Overwrite existing database
+- `--overwrite-models`: Overwrite existing model files
+- `--overwrite-config`: Overwrite existing configuration files
+
+**Note:** The import script handles schema migrations automatically. If importing an older export, migrations will be applied to bring the database up to the current schema version.
+
 ## Next Steps
 
 After setup:

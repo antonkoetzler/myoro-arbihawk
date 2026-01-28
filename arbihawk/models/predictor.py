@@ -150,13 +150,19 @@ class BettingPredictor(BasePredictor):
         tuning_config = config.HYPERPARAMETER_TUNING_CONFIG
         best_params = None
         
-        if tuning_config.get("enabled", True) and dates is not None and len(dates) == len(features):
+        # IMPORTANT: Default to False - hyperparameter tuning is disabled by default
+        # Only enable when explicitly set to True in config
+        if tuning_config.get("enabled", False) and dates is not None and len(dates) == len(features):
             tuner = HyperparameterTuner(
                 market=self.market,
                 search_space=tuning_config.get("search_space", "medium"),
                 min_samples=tuning_config.get("min_samples", 300),
+                n_trials=tuning_config.get("n_trials"),  # Allow override
                 log_callback=log_callback,
-                db=db
+                db=db,
+                n_jobs=tuning_config.get("n_jobs", 1),  # Default: sequential
+                timeout=tuning_config.get("timeout"),  # Optional timeout in seconds
+                early_stopping_patience=tuning_config.get("early_stopping_patience")  # Optional early stopping
             )
             best_params = tuner.tune(features, labels, dates, fixture_ids=fixture_ids)
             

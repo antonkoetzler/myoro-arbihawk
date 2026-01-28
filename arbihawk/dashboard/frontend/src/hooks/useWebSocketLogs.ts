@@ -49,6 +49,9 @@ export function useWebSocketLogs(): UseWebSocketLogsReturn {
           );
 
           setLogs((prev) => {
+            // IMPORTANT: Never automatically clear logs - only manual clearing is allowed
+            // Logs persist across task starts, completions, and WebSocket reconnects
+
             // If a new task is starting, add a separator before the new task log
             // But only if we haven't already added a separator recently (prevent duplicates from replayed logs)
             if (isTaskStart) {
@@ -61,7 +64,7 @@ export function useWebSocketLogs(): UseWebSocketLogsReturn {
                   log.timestamp === data.timestamp &&
                   log.level === data.level
               );
-              
+
               // Only add separator if:
               // 1. Last log wasn't a separator (avoid duplicate separators)
               // 2. This isn't a duplicate message (avoid duplicate task start logs)
@@ -73,7 +76,8 @@ export function useWebSocketLogs(): UseWebSocketLogsReturn {
                   type: 'separator',
                 };
                 const newLogs = [...prev, separator, data];
-                return newLogs.slice(-500);
+                // Keep last 5000 logs (increased from 500) - logs should persist
+                return newLogs.slice(-5000);
               }
               // If it's a duplicate, just skip it entirely
               if (isDuplicateMessage) {
@@ -86,15 +90,15 @@ export function useWebSocketLogs(): UseWebSocketLogsReturn {
             // This allows rapid logs with same message but different timestamps
             const isDuplicate = prev.some(
               (log) =>
-                log.timestamp === data.timestamp && 
+                log.timestamp === data.timestamp &&
                 log.message === data.message &&
                 log.level === data.level
             );
             if (isDuplicate) return prev;
 
-            // Keep only last 500 logs
+            // Keep only last 5000 logs (increased from 500) - logs should persist across full runs
             const newLogs = [...prev, data];
-            return newLogs.slice(-500);
+            return newLogs.slice(-5000);
           });
         } catch {
           // Silently handle parse errors - invalid messages are ignored
@@ -104,6 +108,7 @@ export function useWebSocketLogs(): UseWebSocketLogsReturn {
       ws.onclose = () => {
         setConnected(false);
         // Reconnect after 3 seconds
+        // IMPORTANT: Do NOT clear logs on reconnect - logs should persist
         reconnectTimeoutRef.current = setTimeout(connect, 3000);
       };
 

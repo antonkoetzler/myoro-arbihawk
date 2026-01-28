@@ -39,6 +39,23 @@ def train_models(db: Optional[Database] = None, log_callback: Optional[Callable[
     else:
         print_header("Model Training")
     
+    # Check hyperparameter tuning status and warn if disabled
+    tuning_config = config.HYPERPARAMETER_TUNING_CONFIG
+    if not tuning_config.get("enabled", False):
+        warning_msg = (
+            "WARNING: Hyperparameter tuning is DISABLED. "
+            "Enable it in config/automation.json when you have 10,000+ samples for better model performance. "
+            "Current training will use default hyperparameters."
+        )
+        if log_callback:
+            log_callback("warning", "=" * 60)
+            log_callback("warning", warning_msg)
+            log_callback("warning", "=" * 60)
+        else:
+            print_warning("=" * 60)
+            print_warning(warning_msg)
+            print_warning("=" * 60)
+    
     markets = ['1x2', 'over_under', 'btts']
     db = db or Database()
     feature_engineer = FeatureEngineer(db)

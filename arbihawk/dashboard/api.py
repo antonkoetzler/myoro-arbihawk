@@ -9,6 +9,7 @@ import io
 import json
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Set
@@ -18,7 +19,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config
-from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -43,13 +44,26 @@ from backtesting.backtest import BacktestEngine, BacktestResult
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup
+    global _main_event_loop
+    _main_event_loop = asyncio.get_running_loop()
+    yield
+    # Shutdown (if needed in future)
+    pass
+
+
 class ConnectionManager:
     """Manages WebSocket connections for real-time log streaming."""
     
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
         self._recent_logs: List[Dict[str, Any]] = []
-        self._max_recent_logs = 100
+        # Increased buffer size - logs should persist across reconnects
+        # Only cleared manually, never automatically
+        self._max_recent_logs = 5000
         self._lock = threading.Lock()
     
     async def connect(self, websocket: WebSocket):
@@ -127,19 +141,13 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
-# Initialize FastAPI app
+# Initialize FastAPI app with lifespan event handlers
 app = FastAPI(
     title="Arbihawk Dashboard API",
     description="API for monitoring and controlling the ML-powered prediction & trading platform",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Capture the main event loop at startup for cross-thread communication."""
-    global _main_event_loop
-    _main_event_loop = asyncio.get_running_loop()
 
 
 # Global instances (lazy initialized)
@@ -163,18 +171,31 @@ def get_scheduler() -> AutomationScheduler:
     if _scheduler is None:
         _scheduler = AutomationScheduler(get_db())
         # Set up WebSocket broadcast callback for logs
-        _scheduler.set_log_callback(broadcast_log)
+        # Domain is passed explicitly from scheduler - MUST use it, never default
+        def scheduler_log_callback(level: str, msg: str, domain: str) -> None:
+            # Domain should always be passed by scheduler - use it directly
+            broadcast_log(level, msg, domain)
+        _scheduler.set_log_callback(scheduler_log_callback)
     return _scheduler
 
 
-def broadcast_log(level: str, message: str, domain: str = "betting"):
+def broadcast_log(level: str, message: str, domain: str):
     """Callback to broadcast log messages via WebSocket.
+    
+    IMPORTANT: Domain must always be explicitly provided - no defaults.
+    This ensures proper log separation between betting and trading.
     
     Args:
         level: Log level (info, warning, error, success)
         message: Log message
-        domain: Domain identifier (betting, trading)
+        domain: Domain identifier - REQUIRED (betting or trading)
     """
+    # Validate domain to catch any bugs early
+    if domain not in ("betting", "trading"):
+        # Log the issue but don't crash - default to betting for safety
+        print(f"[WARNING] Invalid log domain '{domain}', defaulting to 'betting'. Message: {message[:50]}")
+        domain = "betting"
+    
     now = datetime.now()
     log_entry = {
         "timestamp": now.strftime("%Y-%m-%d ~ %H:%M:%S"),
@@ -882,12 +903,30 @@ async def start_trading_daemon(request: DaemonStartRequest = DaemonStartRequest(
 
 @app.post("/api/trading/daemon/stop")
 async def stop_trading_daemon() -> Dict[str, Any]:
-    """Stop trading daemon mode."""
+    """Stop trading automation (either daemon or current task)."""
     scheduler = get_scheduler()
-    scheduler.stop_trading_daemon()
+    status = scheduler.get_status()
+    
+    # If a trading task is currently running, stop it
+    current_task = status.get("current_task", "")
+    is_trading_task = current_task and ("trading" in current_task.lower() or 
+                                        current_task in ["trading_collection", "trading_training", "trading_cycle", "trading_full_run"])
+    
+    if is_trading_task:
+        result = scheduler.stop_task()
+        return result
+    
+    # Otherwise, try to stop trading daemon mode
+    if status.get("trading_daemon_running"):
+        scheduler.stop_trading_daemon()
+        return {
+            "success": True,
+            "message": "Stop signal sent to trading daemon"
+        }
+    
     return {
-        "success": True,
-        "message": "Trading daemon stop signal sent"
+        "success": False,
+        "message": "No trading task or daemon is currently running"
     }
 
 
@@ -1590,6 +1629,314 @@ async def update_automation_config(config_update: AutomationConfigUpdate) -> Dic
         "message": "Configuration updated",
         "config": automation_config
     }
+
+
+# =============================================================================
+# EXPORT/IMPORT ENDPOINTS
+# =============================================================================
+
+@app.get("/api/export")
+async def export_data_endpoint() -> Response:
+    """Export all Arbihawk data (database, models, config) as a zip file."""
+    import zipfile
+    import tempfile
+    import platform
+    import importlib.metadata
+    
+    base_dir = Path(__file__).parent.parent
+    db_path = Path(config.DB_PATH)
+    
+    # Check if database exists
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail="Database not found")
+    
+    # Get version info
+    db = Database()
+    schema_version = None
+    try:
+        with db._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(version) FROM schema_version")
+            result = cursor.fetchone()
+            if result and result[0] is not None:
+                schema_version = result[0]
+    except Exception:
+        pass
+    
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    platform_info = {
+        "system": platform.system(),
+        "release": platform.release(),
+        "machine": platform.machine(),
+        "python_version": python_version
+    }
+    
+    package_versions = {}
+    for package in ['pandas', 'numpy', 'xgboost', 'scikit-learn', 'optuna']:
+        try:
+            version = importlib.metadata.version(package)
+            package_versions[package] = version
+        except Exception:
+            pass
+    
+    version_info = {
+        "exported_at": datetime.now().isoformat(),
+        "schema_version": schema_version,
+        "platform": platform_info,
+        "package_versions": package_versions,
+        "arbihawk_version": "1.0.0"
+    }
+    
+    # Create temporary zip file
+    zip_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+            zip_path = Path(tmp_file.name)
+        
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Add database
+            try:
+                zipf.write(db_path, f"data/{db_path.name}")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to add database to export: {str(e)}")
+            
+            # Add model files
+            models_dir = base_dir / "models" / "saved"
+            if models_dir.exists():
+                model_files = list(models_dir.glob("*.pkl"))
+                for model_file in model_files:
+                    try:
+                        zipf.write(model_file, f"models/saved/{model_file.name}")
+                    except Exception as e:
+                        # Log but continue - missing models shouldn't break export
+                        pass
+            
+            # Add config files
+            config_dir = base_dir / "config"
+            if config_dir.exists():
+                config_files = list(config_dir.glob("*.json"))
+                for config_file in config_files:
+                    try:
+                        zipf.write(config_file, f"config/{config_file.name}")
+                    except Exception as e:
+                        # Log but continue - missing configs shouldn't break export
+                        pass
+            
+            # Add version info
+            try:
+                version_json = json.dumps(version_info, indent=2)
+                zipf.writestr("VERSION.json", version_json)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to add version info: {str(e)}")
+        
+        # Read zip file into memory
+        zip_data = zip_path.read_bytes()
+    finally:
+        # Always cleanup temp file
+        if zip_path and zip_path.exists():
+            try:
+                zip_path.unlink()
+            except Exception:
+                pass
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"arbihawk_export_{timestamp}.zip"
+    
+    return StreamingResponse(
+        io.BytesIO(zip_data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.post("/api/import")
+async def import_data_endpoint(
+    file: UploadFile = File(...),
+    overwrite_db: str = Form("false"),
+    overwrite_models: str = Form("false"),
+    overwrite_config: str = Form("false")
+) -> Dict[str, Any]:
+    """Import Arbihawk data from export zip file."""
+    import zipfile
+    import tempfile
+    from shutil import copy2
+    
+    # Convert string form values to boolean
+    overwrite_db_bool = overwrite_db.lower() == "true"
+    overwrite_models_bool = overwrite_models.lower() == "true"
+    overwrite_config_bool = overwrite_config.lower() == "true"
+    
+    if not file.filename or not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="File must be a .zip file")
+    
+    base_dir = Path(__file__).parent.parent
+    
+    # Save uploaded file to temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+        tmp_path = Path(tmp_file.name)
+        content = await file.read()
+        tmp_path.write_bytes(content)
+    
+    try:
+        # Validate zip file
+        try:
+            with zipfile.ZipFile(tmp_path, 'r') as test_zip:
+                test_zip.testzip()
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Invalid or corrupted zip file")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read zip file: {str(e)}")
+        
+        with zipfile.ZipFile(tmp_path, 'r') as zipf:
+            # Load version info
+            version_info = {}
+            try:
+                version_data = zipf.read("VERSION.json")
+                version_info = json.loads(version_data)
+            except Exception:
+                pass
+            
+            # Check schema compatibility (only if current database exists)
+            current_db_path = Path(config.DB_PATH)
+            export_schema = version_info.get("schema_version")
+            current_schema = None
+            
+            if current_db_path.exists():
+                try:
+                    current_db = Database()
+                    with current_db._get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT MAX(version) FROM schema_version")
+                        result = cursor.fetchone()
+                        if result and result[0] is not None:
+                            current_schema = result[0]
+                except Exception:
+                    pass
+            
+            schema_warning = None
+            if export_schema is not None and current_schema is not None:
+                if export_schema < current_schema:
+                    schema_warning = f"Export schema ({export_schema}) is older than current ({current_schema})"
+            
+            # Import database
+            db_files = [f for f in zipf.namelist() if f.startswith("data/") and f.endswith(".db")]
+            if not db_files:
+                raise HTTPException(status_code=400, detail="No database file found in export")
+            
+            db_file = db_files[0]
+            current_db_path = Path(config.DB_PATH)
+            
+            if current_db_path.exists() and not overwrite_db_bool:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Database already exists. Use overwrite_db=true to replace it."
+                )
+            
+            # Extract database
+            current_db_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_db = current_db_path.parent / f"{current_db_path.name}.tmp"
+            
+            try:
+                with zipf.open(db_file) as source:
+                    with open(temp_db, 'wb') as target:
+                        target.write(source.read())
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to extract database: {str(e)}")
+            
+            # Backup existing database
+            backup_path = None
+            if current_db_path.exists():
+                try:
+                    backup_path = current_db_path.parent / f"{current_db_path.name}.backup"
+                    copy2(current_db_path, backup_path)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Failed to backup existing database: {str(e)}")
+            
+            try:
+                temp_db.replace(current_db_path)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to replace database: {str(e)}")
+            
+            # Initialize schema (will run migrations if needed)
+            try:
+                db = Database(db_path=str(current_db_path))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to initialize database schema: {str(e)}")
+            
+            # Import models
+            model_files = [f for f in zipf.namelist() if f.startswith("models/saved/") and f.endswith(".pkl")]
+            models_dir = base_dir / "models" / "saved"
+            models_dir.mkdir(parents=True, exist_ok=True)
+            imported_models = []
+            skipped_models = []
+            
+            for model_file in model_files:
+                model_name = Path(model_file).name
+                target_path = models_dir / model_name
+                
+                if target_path.exists() and not overwrite_models_bool:
+                    skipped_models.append(model_name)
+                    continue
+                
+                try:
+                    with zipf.open(model_file) as source:
+                        with open(target_path, 'wb') as target:
+                            target.write(source.read())
+                    imported_models.append(model_name)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Failed to import model {model_name}: {str(e)}")
+            
+            # Import config
+            config_files = [f for f in zipf.namelist() if f.startswith("config/") and f.endswith(".json")]
+            config_dir = base_dir / "config"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            imported_configs = []
+            skipped_configs = []
+            
+            for config_file in config_files:
+                config_name = Path(config_file).name
+                target_path = config_dir / config_name
+                
+                if target_path.exists() and not overwrite_config_bool:
+                    skipped_configs.append(config_name)
+                    continue
+                
+                try:
+                    with zipf.open(config_file) as source:
+                        with open(target_path, 'wb') as target:
+                            target.write(source.read())
+                    imported_configs.append(config_name)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Failed to import config {config_name}: {str(e)}")
+        
+        return {
+            "success": True,
+            "message": "Import completed successfully",
+            "version_info": version_info,
+            "schema_warning": schema_warning,
+            "imported": {
+                "database": True,
+                "models": imported_models,
+                "configs": imported_configs
+            },
+            "skipped": {
+                "models": skipped_models,
+                "configs": skipped_configs
+            },
+            "backup_path": str(backup_path) if backup_path else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+    finally:
+        # Always clean up temp file
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
 
 
 # =============================================================================

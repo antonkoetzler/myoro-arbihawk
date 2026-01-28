@@ -2,6 +2,6 @@
 Dashboard module for monitoring and control.
 """
 
-from .api import app
-
-__all__ = ["app"]
+# Avoid importing here to prevent RuntimeWarning when running as module
+# Import will happen when needed, not at package level
+__all__ = []

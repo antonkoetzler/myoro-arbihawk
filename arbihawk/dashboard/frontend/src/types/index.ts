@@ -140,6 +140,32 @@ export interface EnvironmentConfig {
   db_path: string;
 }
 
+export interface ImportResponse {
+  success: boolean;
+  message: string;
+  version_info?: {
+    exported_at?: string;
+    schema_version?: number;
+    platform?: {
+      system?: string;
+      release?: string;
+      machine?: string;
+      python_version?: string;
+    };
+  };
+  schema_warning?: string;
+  imported: {
+    database: boolean;
+    models: string[];
+    configs: string[];
+  };
+  skipped: {
+    models: string[];
+    configs: string[];
+  };
+  backup_path?: string;
+}
+
 export interface TriggerAutomationParams {
   mode: string;
   max_workers_leagues?: number;

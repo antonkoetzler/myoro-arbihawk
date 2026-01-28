@@ -244,21 +244,35 @@ export function LogsTab({ wsLogs, wsConnected }: LogsTabProps) {
     localStorage.setItem(LOGS_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
   
-  // Separate logs by domain
+  // Separate logs by domain - use domain field primarily, fallback to message content
   const bettingLogs = wsLogs.filter(log => {
     const domain = log.domain || 'betting';
+    // If domain is explicitly set, use it
+    if (domain === 'betting') return true;
+    if (domain === 'trading') return false;
+    // Fallback: check message content for trading indicators
     const isTradingMessage = log.message?.includes('[TRADING]') || 
                              log.message?.includes('[STOCKS]') || 
-                             log.message?.includes('[CRYPTO]');
-    return domain === 'betting' && !isTradingMessage;
+                             log.message?.includes('[CRYPTO]') ||
+                             log.message?.includes('Training MOMENTUM') ||
+                             log.message?.includes('Training SWING') ||
+                             log.message?.includes('Training VOLATILITY');
+    return !isTradingMessage;
   });
   
   const tradingLogs = wsLogs.filter(log => {
-    const domain = log.domain;
+    const domain = log.domain || 'betting';
+    // If domain is explicitly set, use it
+    if (domain === 'trading') return true;
+    if (domain === 'betting') return false;
+    // Fallback: check message content for trading indicators
     const isTradingMessage = log.message?.includes('[TRADING]') || 
                              log.message?.includes('[STOCKS]') || 
-                             log.message?.includes('[CRYPTO]');
-    return domain === 'trading' || isTradingMessage;
+                             log.message?.includes('[CRYPTO]') ||
+                             log.message?.includes('Training MOMENTUM') ||
+                             log.message?.includes('Training SWING') ||
+                             log.message?.includes('Training VOLATILITY');
+    return isTradingMessage;
   });
 
   return (

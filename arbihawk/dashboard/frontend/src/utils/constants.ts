@@ -1,4 +1,4 @@
-// Messages that indicate a new task is starting (should clear logs)
+// Messages that indicate a new task is starting (used for visual separators only - logs are NOT cleared)
 export const TASK_START_PATTERNS: readonly string[] = [
   'Starting model training',
   'Starting data collection',

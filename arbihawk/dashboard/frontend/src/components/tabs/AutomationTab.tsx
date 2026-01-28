@@ -282,8 +282,8 @@ export function AutomationTab({
         <button
           onClick={() => setSelectedDomain('betting')}
           className={`flex-1 px-6 py-3 text-sm font-semibold rounded-lg transition-all ${selectedDomain === 'betting'
-              ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
-              : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-300'
+            ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
+            : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-300'
             }`}
           type='button'
         >
@@ -292,8 +292,8 @@ export function AutomationTab({
         <button
           onClick={() => setSelectedDomain('trading')}
           className={`flex-1 px-6 py-3 text-sm font-semibold rounded-lg transition-all ${selectedDomain === 'trading'
-              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-              : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-300'
+            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
+            : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-300'
             }`}
           type='button'
         >
@@ -306,12 +306,12 @@ export function AutomationTab({
           <h3 className='text-lg font-semibold'>Automation Control</h3>
           <div
             className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm ${selectedDomain === 'betting'
-                ? status?.running
-                  ? 'bg-sky-500/20 text-sky-400'
-                  : 'bg-slate-700 text-slate-400'
-                : tradingStatus?.enabled
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-slate-700 text-slate-400'
+              ? status?.running
+                ? 'bg-sky-500/20 text-sky-400'
+                : 'bg-slate-700 text-slate-400'
+              : tradingStatus?.enabled
+                ? 'bg-emerald-500/20 text-emerald-400'
+                : 'bg-slate-700 text-slate-400'
               }`}
           >
             {selectedDomain === 'betting'
@@ -492,7 +492,7 @@ export function AutomationTab({
                   </button>
                 </Tooltip>
                 <div className='my-1 border-t border-slate-700' />
-                <Tooltip text={taskButtonTooltip || 'Run collection, training, and betting in sequence'}>
+                <Tooltip text={taskButtonTooltip || 'Run collection, training, and betting in sequence'} className='w-full'>
                   <button
                     onClick={() => {
                       triggerFullRunWithWorkers();
@@ -505,7 +505,7 @@ export function AutomationTab({
                     <Play size={16} /> Full Run
                   </button>
                 </Tooltip>
-                <Tooltip text='Start daemon mode to run full cycles continuously'>
+                <Tooltip text='Start daemon mode to run full cycles continuously' className='w-full'>
                   <button
                     onClick={() => {
                       if (onSwitchToLogs) onSwitchToLogs();
@@ -517,6 +517,19 @@ export function AutomationTab({
                     type='button'
                   >
                     <Play size={16} /> Run Daemon
+                  </button>
+                </Tooltip>
+                <Tooltip text='Stop daemon mode' className='w-full'>
+                  <button
+                    onClick={() => {
+                      stopMutation.mutate();
+                      setBettingMenuOpen(false);
+                    }}
+                    disabled={stopMutation.isPending || !status?.running}
+                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    type='button'
+                  >
+                    <Square size={16} /> Stop Daemon
                   </button>
                 </Tooltip>
               </div>
@@ -604,7 +617,6 @@ export function AutomationTab({
                     <Play size={16} /> Full Run
                   </button>
                 </Tooltip>
-                <div className='my-1 border-t border-slate-700' />
                 <Tooltip text={tradingStatus?.enabled ? 'Start daemon mode to run full cycles continuously (every hour)' : 'Trading is disabled in configuration'} className='w-full'>
                   <button
                     onClick={() => {
@@ -753,8 +765,8 @@ export function AutomationTab({
                 }
                 disabled={updateFakeMoneyMutation.isPending}
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${fakeMoneyConfig.auto_bet_after_training
-                    ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                  : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
                   } disabled:opacity-50`}
                 type='button'
               >
