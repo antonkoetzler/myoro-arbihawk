@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 # Add arbihawk to path
-arbihawk_path = Path(__file__).parent.parent / "arbihawk"
+arbihawk_path = Path(__file__).parent.parent.parent / "src" / "arbihawk"
 sys.path.insert(0, str(arbihawk_path))
 
 from data.database import Database

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "arbihawk"))
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "arbihawk"))
 
 from data.database import Database
 

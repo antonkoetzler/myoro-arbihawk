@@ -14,8 +14,8 @@ from pathlib import Path
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "arbihawk"))
-sys.path.insert(0, str(PROJECT_ROOT / "arbihawk" / "scrapers" / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "arbihawk"))
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "arbihawk" / "scrapers" / "src"))
 
 
 def test_flashscore_parallel_scraping():

@@ -10,7 +10,7 @@ except ImportError:
     HAS_URLLIB = False
 
 # Add arbihawk to path
-sys.path.insert(0, str(Path(__file__).parent / "arbihawk"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "arbihawk"))
 
 from arbihawk.data.database import Database
 from arbihawk.automation.scheduler import AutomationScheduler

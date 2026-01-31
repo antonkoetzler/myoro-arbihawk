@@ -1,7 +1,7 @@
 """Run all tests for collection and training flows."""
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "arbihawk"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "arbihawk"))
 
 def test_odds():
     """Test odds extraction."""

@@ -4,7 +4,7 @@ import sys
 import time
 import threading
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "arbihawk"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "arbihawk"))
 
 from automation.scheduler import AutomationScheduler
 from utils.colors import print_header, print_success, print_error, print_info, print_warning

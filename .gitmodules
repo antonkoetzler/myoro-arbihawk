@@ -1,3 +1,3 @@
-[submodule "arbihawk/scrapers"]
-	path = arbihawk/scrapers
+[submodule "src/arbihawk/scrapers"]
+	path = src/arbihawk/scrapers
 	url = git@github.com:antonkoetzler/scrapers.git

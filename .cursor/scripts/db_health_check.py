@@ -3,7 +3,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-db_path = Path(__file__).parent.parent.parent / "arbihawk" / "data" / "arbihawk.db"
+db_path = Path(__file__).parent.parent.parent / "src" / "arbihawk" / "data" / "arbihawk.db"
 
 conn = sqlite3.connect(str(db_path))
 conn.row_factory = sqlite3.Row

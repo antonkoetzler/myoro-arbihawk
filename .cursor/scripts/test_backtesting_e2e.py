@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "arbihawk"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "arbihawk"))
 
 from data.database import Database
 from backtesting.backtest import BacktestEngine, BacktestResult

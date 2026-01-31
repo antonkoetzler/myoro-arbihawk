@@ -4,7 +4,7 @@
     {
       "label": "Setup: Install Dependencies",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "pip",
@@ -13,7 +13,7 @@
         "requirements.txt"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "pip",
@@ -23,7 +23,7 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "group": {
         "kind": "build",
@@ -46,21 +46,21 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Automation: Collect Data",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "automation.runner",
         "--mode=collect"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "automation.runner",
@@ -68,21 +68,21 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Automation: Train Models",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "automation.runner",
         "--mode=train"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "automation.runner",
@@ -90,21 +90,21 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Automation: Full Cycle",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "automation.runner",
         "--mode=full"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "automation.runner",
@@ -112,21 +112,21 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Automation: Run Once",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "automation.runner",
         "--once"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "automation.runner",
@@ -134,21 +134,21 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Automation: Run Daemon",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "automation.runner",
         "--daemon"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "automation.runner",
@@ -156,7 +156,7 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "isBackground": true,
       "problemMatcher": []
@@ -164,14 +164,14 @@
     {
       "label": "Automation: Check Status",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "automation.runner",
         "--status"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "automation.runner",
@@ -179,45 +179,45 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Training: Train All Models",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "train.py"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "train.py"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Dashboard Backend: Start Server",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-m",
         "dashboard.api"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-m",
           "dashboard.api"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "dependsOn": "Setup: Install Dependencies",
       "isBackground": true,
@@ -226,20 +226,20 @@
     {
       "label": "Dashboard Backend: Start with Reload",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/uvicorn",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/uvicorn",
       "args": [
         "dashboard.api:app",
         "--reload"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\uvicorn.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\uvicorn.exe",
         "args": [
           "dashboard.api:app",
           "--reload"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "dependsOn": "Setup: Install Dependencies",
       "isBackground": true,
@@ -250,7 +250,7 @@
       "type": "shell",
       "command": "bun install",
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk/dashboard/frontend"
+        "cwd": "${workspaceFolder}/src/arbihawk/dashboard/frontend"
       },
       "problemMatcher": []
     },
@@ -260,7 +260,7 @@
       "command": "bun run dev",
       "dependsOn": "Dashboard Frontend: Install Dependencies",
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk/dashboard/frontend"
+        "cwd": "${workspaceFolder}/src/arbihawk/dashboard/frontend"
       },
       "isBackground": true,
       "problemMatcher": []
@@ -268,127 +268,127 @@
     {
       "label": "Database: Check Stats",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "from data.database import Database; db = Database(); import json; print(json.dumps(db.get_database_stats(), indent=2))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "from data.database import Database; db = Database(); import json; print(json.dumps(db.get_database_stats(), indent=2))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Database: Reset Debug (Preserve Models)",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'debug'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=True); print(json.dumps(result, indent=2))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'debug'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=True); print(json.dumps(result, indent=2))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Database: Reset Debug (Full)",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'debug'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=False); print(json.dumps(result, indent=2))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'debug'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=False); print(json.dumps(result, indent=2))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Database: Reset Production (Preserve Models)",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'production'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=True); print(json.dumps(result, indent=2))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'production'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=True); print(json.dumps(result, indent=2))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Database: Reset Production (Full)",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'production'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=False); print(json.dumps(result, indent=2))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "import json; from pathlib import Path; config_path = Path('config/config.json'); config = json.load(open(config_path)); config['environment'] = 'production'; json.dump(config, open(config_path, 'w'), indent=2); import config as cfg; cfg.reload_config(); from data.database import Database; db = Database(); result = db.reset_database(preserve_models=False); print(json.dumps(result, indent=2))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Tests: Run All",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/pytest",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/pytest",
       "args": [
         "tests/",
         "-v"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\pytest.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\pytest.exe",
         "args": [
           "tests/",
           "-v"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Tests: Run with Coverage",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/pytest",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/pytest",
       "args": [
         "tests/",
         "--cov=data",
@@ -397,7 +397,7 @@
         "--cov-report=term-missing"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\pytest.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\pytest.exe",
         "args": [
           "tests/",
           "--cov=data",
@@ -407,105 +407,105 @@
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Trading: Collect Data",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "from automation.scheduler import AutomationScheduler; s = AutomationScheduler(); print(s.run_trading_collection())"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "from automation.scheduler import AutomationScheduler; s = AutomationScheduler(); print(s.run_trading_collection())"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Trading: Train Models",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "train_trading.py"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "train_trading.py"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Trading: Run Trading Cycle",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "from automation.scheduler import AutomationScheduler; s = AutomationScheduler(); print(s.run_trading_cycle())"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "from automation.scheduler import AutomationScheduler; s = AutomationScheduler(); print(s.run_trading_cycle())"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Trading: Initialize Portfolio",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "from data.database import Database; from trading.portfolio_manager import PortfolioManager; db = Database(); pm = PortfolioManager(db); pm.initialize(); print('Portfolio initialized with $' + str(pm.starting_balance))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "from data.database import Database; from trading.portfolio_manager import PortfolioManager; db = Database(); pm = PortfolioManager(db); pm.initialize(); print('Portfolio initialized with $' + str(pm.starting_balance))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     },
     {
       "label": "Trading: Check Portfolio Status",
       "type": "shell",
-      "command": "${workspaceFolder}/arbihawk/venv/bin/python",
+      "command": "${workspaceFolder}/src/arbihawk/venv/bin/python",
       "args": [
         "-c",
         "import json; from data.database import Database; from trading.portfolio_manager import PortfolioManager; db = Database(); pm = PortfolioManager(db); print(json.dumps(pm.get_performance_metrics(), indent=2))"
       ],
       "windows": {
-        "command": "${workspaceFolder}\\arbihawk\\venv\\Scripts\\python.exe",
+        "command": "${workspaceFolder}\\src\\arbihawk\\venv\\Scripts\\python.exe",
         "args": [
           "-c",
           "import json; from data.database import Database; from trading.portfolio_manager import PortfolioManager; db = Database(); pm = PortfolioManager(db); print(json.dumps(pm.get_performance_metrics(), indent=2))"
         ]
       },
       "options": {
-        "cwd": "${workspaceFolder}/arbihawk"
+        "cwd": "${workspaceFolder}/src/arbihawk"
       },
       "problemMatcher": []
     }

@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Run from repo root; arbihawk package must be on path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-ARBIHAWK_ROOT = REPO_ROOT / "arbihawk"
+ARBIHAWK_ROOT = REPO_ROOT / "src" / "arbihawk"
 for p in (str(ARBIHAWK_ROOT), str(REPO_ROOT)):
     if p not in sys.path:
         sys.path.insert(0, p)

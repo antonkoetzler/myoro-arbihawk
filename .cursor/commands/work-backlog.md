@@ -1,14 +1,14 @@
 # /work-backlog
 
-1. Open `./arbihawk/docs/backlog.md`
-2. Study the codebase, and see if there are any tasks that should be REMOVED from or ADDED to `./arbihawk/docs/backlog.md`
+1. Open `./src/arbihawk/docs/backlog.md`
+2. Study the codebase, and see if there are any tasks that should be REMOVED from or ADDED to `./src/arbihawk/docs/backlog.md`
 
 - This is moreso just a sanity check because I had you, AI, make this backlog
 - Please make sure that you remember to only remove tasks if it will not improve profitability in the application
 - Please make sure that you remember to only add tasks if it will (objectively, with evidence backing it preferably) improve profitability in the application
 - Don't add or remove things just because you feel like you have to "complete" this step, it's completely normal to leave this step if you don't find anything
 
-3. Read `./arbihawk/docs/backlog.md` and find the best and most high priority task(s) that should be done right now
+3. Read `./src/arbihawk/docs/backlog.md` and find the best and most high priority task(s) that should be done right now
 
 - Make sure you only tackle a more complex and higher priority task if it most rationale to do before completing other tasks
 - You are encouraged to implement various tasks at once if they are related to eachother and should/can be done in tandem
@@ -27,4 +27,4 @@
   - Make sure all Pyhton code has provided functionality
   - Do not leave residual files hanging around, if you want to keep any files to reuse later, in a different chat add them to `.cursor/scripts`
 
-8. After you've completed the task(s), you will remove the task(s) from `./arbihawk/docs/backlog.md` completely—do NOT leave them in an "implemented" or "Recently Completed" state, and do NOT re-add completed tasks to the backlog in any form
+8. After you've completed the task(s), you will remove the task(s) from `./src/arbihawk/docs/backlog.md` completely—do NOT leave them in an "implemented" or "Recently Completed" state, and do NOT re-add completed tasks to the backlog in any form
