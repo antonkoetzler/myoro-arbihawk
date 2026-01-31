@@ -153,6 +153,7 @@ class ValueBetEngine:
                     
                     if prob_col and prob_col in probabilities.columns:
                         probability = probabilities[prob_col].iloc[0]
+                        probability = min(probability, config.MAX_DISPLAY_PROBABILITY)
                         
                         # Get margin for this market
                         market_margin = config.BOOKMAKER_MARGINS.get(market, 0.05)  # Default 5% if market not found

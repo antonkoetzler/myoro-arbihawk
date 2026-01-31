@@ -14,6 +14,11 @@ from data.database import Database
 from data.ingestion import DataIngestionService
 import config
 
+# Force debug DB when running tests; never use prod
+_base = Path(__file__).resolve().parent.parent
+config.ENVIRONMENT = "debug"
+config.DB_PATH = str(_base / "data" / "arbihawk_debug.db")
+
 
 @pytest.fixture
 def temp_db():

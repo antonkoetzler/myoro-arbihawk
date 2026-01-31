@@ -32,9 +32,15 @@ def _get_automation_config() -> Dict[str, Any]:
     return _load_json_config("automation.json")
 
 
+def _get_team_aliases_config() -> Dict[str, Any]:
+    """Load team aliases and matching config."""
+    return _load_json_config("team_aliases.json")
+
+
 # Load configs
 _config = _get_config()
 _automation_config = _get_automation_config()
+_team_aliases_config = _get_team_aliases_config()
 
 # Environment configuration
 ENVIRONMENT = _config.get("environment", "debug")  # 'debug' or 'production'
@@ -54,6 +60,8 @@ elif "db_path" in _config:
 else:
     DB_PATH = str(BASE_DIR / default_db_path)
 EV_THRESHOLD = float(_config.get("ev_threshold", 0.07))
+# Max probability to use for display and EV (caps overconfident model output; default 0.98 = never show 100%)
+MAX_DISPLAY_PROBABILITY = float(_config.get("max_display_probability", 0.98))
 
 # Bookmaker margin configuration (defaults based on industry research)
 # Margins represent the overround/vig that bookmakers add to odds
@@ -69,6 +77,12 @@ COLLECTION_SCHEDULE = _automation_config.get("collection_schedule", "0 */6 * * *
 TRAINING_SCHEDULE = _automation_config.get("training_schedule", "0 2 * * *")
 INCREMENTAL_MODE = _automation_config.get("incremental_mode", True)
 MATCHING_TOLERANCE_HOURS = _automation_config.get("matching_tolerance_hours", 2)
+# Team matching: aliases and min fuzzy score (from team_aliases.json or automation)
+TEAM_ALIASES = _team_aliases_config.get("aliases", {})
+_min = _team_aliases_config.get("matching_min_match_score")
+if _min is None:
+    _min = _automation_config.get("matching_min_match_score", 75)
+MATCHING_MIN_MATCH_SCORE = int(_min)
 SCRAPER_ARGS = _automation_config.get("scraper_args", {})
 SCRAPER_WORKERS = _automation_config.get("scraper_workers", {
     "max_workers_leagues": 5,
@@ -165,15 +179,17 @@ TRADING_HYPERPARAMETER_TUNING_CONFIG = _automation_config.get("trading_hyperpara
 
 def reload_config():
     """Reload configuration from files."""
-    global _config, _automation_config
+    global _config, _automation_config, _team_aliases_config
     global ENVIRONMENT, DB_PATH, EV_THRESHOLD, COLLECTION_SCHEDULE, TRAINING_SCHEDULE
-    global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, SCRAPER_ARGS, SCRAPER_WORKERS
+    global INCREMENTAL_MODE, MATCHING_TOLERANCE_HOURS, MATCHING_MIN_MATCH_SCORE, TEAM_ALIASES
+    global SCRAPER_ARGS, SCRAPER_WORKERS
     global FAKE_MONEY_CONFIG, MODEL_VERSIONING_CONFIG, METRICS_CONFIG, BACKUP_CONFIG
     global AUTO_BET_AFTER_TRAINING, BOOKMAKER_MARGINS, HYPERPARAMETER_TUNING_CONFIG
     global TRADING_CONFIG, TRADING_HYPERPARAMETER_TUNING_CONFIG
     
     _config = _get_config()
     _automation_config = _get_automation_config()
+    _team_aliases_config = _get_team_aliases_config()
     
     ENVIRONMENT = _config.get("environment", "debug")
     
@@ -199,6 +215,11 @@ def reload_config():
     TRAINING_SCHEDULE = _automation_config.get("training_schedule", "0 2 * * *")
     INCREMENTAL_MODE = _automation_config.get("incremental_mode", True)
     MATCHING_TOLERANCE_HOURS = _automation_config.get("matching_tolerance_hours", 2)
+    TEAM_ALIASES = _team_aliases_config.get("aliases", {})
+    _min = _team_aliases_config.get("matching_min_match_score")
+    if _min is None:
+        _min = _automation_config.get("matching_min_match_score", 75)
+    MATCHING_MIN_MATCH_SCORE = int(_min)
     SCRAPER_ARGS = _automation_config.get("scraper_args", {})
     SCRAPER_WORKERS = _automation_config.get("scraper_workers", {
         "max_workers_leagues": 5,

@@ -741,15 +741,16 @@ class DataIngestionService:
                 match_time=match_time
             )
             
-            # Determine fixture ID (matched or temp)
+            # Determine fixture ID (matched or synthetic via central layer)
             if fixture_id:
                 # Matched to existing fixture - use real fixture ID
                 final_fixture_id = fixture_id
                 matched_count += 1
             else:
-                # No match found - store with temp ID for later matching
-                match_date = match.get("match_date") or match_time.split('T')[0] if 'T' in match_time else match_time
-                final_fixture_id = f"{source}_{home_team}_{away_team}_{match_date}".replace(" ", "_")
+                # No match found - store with synthetic ID (match_identity format)
+                from .match_identity import synthetic_id
+                match_date = match.get("match_date") or (match_time.split("T")[0] if "T" in str(match_time) else match_time)
+                final_fixture_id = synthetic_id(source, home_team, away_team, match_date)
                 
                 # Create minimal fixture record to prevent orphaned data
                 # This allows foreign key integrity and enables later matching

@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 import tempfile
 import shutil
+from unittest.mock import patch, MagicMock
 
 from models.predictor import BettingPredictor
 from models.calibration import calculate_brier_score, calculate_ece, evaluate_calibration
@@ -87,7 +88,30 @@ class TestCalibration:
         assert predictor.is_trained
         assert predictor.calibrator is None
         assert predictor.calibration_metrics == {}
-    
+
+    def test_train_with_betting_eval_is_trained_before_evaluation(self):
+        """Test that predictor sets is_trained=True before betting evaluation (no 'Predictor must be trained' error)."""
+        np.random.seed(42)
+        n_samples = 120  # >= 100 so use_betting_eval can be True
+        n_features = 10
+        X = pd.DataFrame(np.random.randn(n_samples, n_features))
+        y = pd.Series(np.random.choice(['home_win', 'draw', 'away_win'], n_samples))
+        dates = pd.Series(pd.date_range('2024-01-01', periods=n_samples, freq='D').astype(str))
+
+        mock_eval_return = {
+            'roi': 0.0, 'profit': 0.0, 'sharpe_ratio': 0.0,
+            'win_rate': 0.0, 'total_bets': 0, 'total_stake': 0.0
+        }
+
+        with patch('models.betting_evaluator.BettingEvaluator') as MockEval:
+            MockEval.return_value.evaluate.return_value = mock_eval_return
+            predictor = BettingPredictor(market='1x2', enable_calibration=False)
+            predictor.train(X, y, dates=dates, db=MagicMock(), validation_split=0.2)
+
+        assert predictor.is_trained
+        MockEval.return_value.evaluate.assert_called_once()
+        assert predictor.betting_metrics == mock_eval_return
+
     def test_calibration_insufficient_data(self):
         """Test that calibration is skipped with insufficient data."""
         np.random.seed(42)

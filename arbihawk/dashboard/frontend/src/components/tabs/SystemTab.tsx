@@ -20,6 +20,11 @@ export function SystemTab({ api, showToast }: SystemTabProps) {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [preserveModels, setPreserveModels] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
+  const [showResetBettingConfirm, setShowResetBettingConfirm] = useState(false);
+  const [showResetTradingConfirm, setShowResetTradingConfirm] = useState(false);
+  const [isResettingBetting, setIsResettingBetting] = useState(false);
+  const [isResettingTrading, setIsResettingTrading] = useState(false);
+  const [preserveModelsBetting, setPreserveModelsBetting] = useState(true);
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -63,10 +68,49 @@ export function SystemTab({ api, showToast }: SystemTabProps) {
       );
       setShowResetConfirm(false);
       void queryClient.invalidateQueries({ queryKey: ['dbStats'] });
+      void queryClient.invalidateQueries({ queryKey: ['bankroll'] });
     } catch (err) {
       // Error already handled by API layer
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const handleResetBetting = async () => {
+    setIsResettingBetting(true);
+    try {
+      const result = await api.resetBettingDomain(preserveModelsBetting);
+      showToast(
+        `Betting domain reset. ${result.total_deleted.toLocaleString()} records deleted. Backup: ${result.backup_path.split('/').pop()}`,
+        'success',
+        10000
+      );
+      setShowResetBettingConfirm(false);
+      void queryClient.invalidateQueries({ queryKey: ['dbStats'] });
+      void queryClient.invalidateQueries({ queryKey: ['bankroll'] });
+      void queryClient.invalidateQueries({ queryKey: ['models'] });
+    } catch (err) {
+      // Error already handled by API layer
+    } finally {
+      setIsResettingBetting(false);
+    }
+  };
+
+  const handleResetTrading = async () => {
+    setIsResettingTrading(true);
+    try {
+      const result = await api.resetTradingDomain();
+      showToast(
+        `Trading domain reset. ${result.total_deleted.toLocaleString()} records deleted. Backup: ${result.backup_path.split('/').pop()}`,
+        'success',
+        10000
+      );
+      setShowResetTradingConfirm(false);
+      void queryClient.invalidateQueries({ queryKey: ['dbStats'] });
+    } catch (err) {
+      // Error already handled by API layer
+    } finally {
+      setIsResettingTrading(false);
     }
   };
 
@@ -460,6 +504,87 @@ export function SystemTab({ api, showToast }: SystemTabProps) {
                 </p>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Reset by domain */}
+        <div className='mt-6'>
+          <h4 className='mb-1 text-sm font-semibold text-slate-300'>Reset by domain</h4>
+          <p className='mb-3 text-xs text-slate-400'>
+            Clear only betting or only trading data. A backup is created before each reset.
+          </p>
+          <div className='flex flex-wrap gap-3'>
+            {!showResetBettingConfirm ? (
+              <button
+                onClick={() => setShowResetBettingConfirm(true)}
+                className='flex items-center gap-2 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/30'
+              >
+                <RotateCcw size={16} />
+                Reset Betting
+              </button>
+            ) : (
+              <div className='flex items-center gap-2'>
+                <label className='flex items-center gap-2 text-sm text-slate-300'>
+                  <input
+                    type='checkbox'
+                    checked={preserveModelsBetting}
+                    onChange={(e) => setPreserveModelsBetting(e.target.checked)}
+                    className='rounded border-slate-600 bg-slate-700'
+                  />
+                  Preserve models
+                </label>
+                <button
+                  onClick={handleResetBetting}
+                  disabled={isResettingBetting}
+                  className='rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50'
+                >
+                  {isResettingBetting ? 'Resetting...' : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => setShowResetBettingConfirm(false)}
+                  disabled={isResettingBetting}
+                  className='rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-600 disabled:opacity-50'
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {!showResetTradingConfirm ? (
+              <button
+                onClick={() => setShowResetTradingConfirm(true)}
+                className='flex items-center gap-2 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/30'
+              >
+                <RotateCcw size={16} />
+                Reset Trading
+              </button>
+            ) : (
+              <div className='flex items-center gap-2'>
+                <button
+                  onClick={handleResetTrading}
+                  disabled={isResettingTrading}
+                  className='rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50'
+                >
+                  {isResettingTrading ? 'Resetting...' : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => setShowResetTradingConfirm(false)}
+                  disabled={isResettingTrading}
+                  className='rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-600 disabled:opacity-50'
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+          {showResetBettingConfirm && (
+            <p className='mt-2 text-xs text-slate-400'>
+              Betting: fixtures, odds, scores, bet history, ingestion metadata, metrics. Balance returns to config starting_balance.
+            </p>
+          )}
+          {showResetTradingConfirm && (
+            <p className='mt-2 text-xs text-slate-400'>
+              Trading: stocks, crypto, price history, indicators, trades, positions, portfolio.
+            </p>
           )}
         </div>
       </div>

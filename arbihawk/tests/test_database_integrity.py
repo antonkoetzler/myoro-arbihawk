@@ -353,3 +353,120 @@ class TestDatabaseIntegrity:
             assert 'idx_trades_strategy' in indexes
             assert 'idx_positions_symbol' in indexes
             assert 'idx_portfolio_timestamp' in indexes
+
+
+class TestGetFixturesQueryParams:
+    """Test get_fixtures filtering (home_team_id, away_team_id, dates, limit)."""
+
+    def test_get_fixtures_filter_home_team_id(self, temp_db):
+        temp_db.insert_fixture({
+            "fixture_id": "f1", "home_team_id": "team_a", "away_team_id": "team_b",
+            "home_team_name": "A", "away_team_name": "B",
+            "start_time": "2025-01-10T12:00:00Z", "status": "scheduled"
+        })
+        temp_db.insert_fixture({
+            "fixture_id": "f2", "home_team_id": "team_c", "away_team_id": "team_d",
+            "home_team_name": "C", "away_team_name": "D",
+            "start_time": "2025-01-11T12:00:00Z", "status": "scheduled"
+        })
+        df = temp_db.get_fixtures(home_team_id="team_a")
+        assert len(df) == 1
+        assert df.iloc[0]["fixture_id"] == "f1"
+
+    def test_get_fixtures_filter_away_team_id(self, temp_db):
+        temp_db.insert_fixture({
+            "fixture_id": "f1", "home_team_id": "team_a", "away_team_id": "team_b",
+            "home_team_name": "A", "away_team_name": "B",
+            "start_time": "2025-01-10T12:00:00Z", "status": "scheduled"
+        })
+        temp_db.insert_fixture({
+            "fixture_id": "f2", "home_team_id": "team_c", "away_team_id": "team_d",
+            "home_team_name": "C", "away_team_name": "D",
+            "start_time": "2025-01-11T12:00:00Z", "status": "scheduled"
+        })
+        df = temp_db.get_fixtures(away_team_id="team_d")
+        assert len(df) == 1
+        assert df.iloc[0]["fixture_id"] == "f2"
+
+    def test_get_fixtures_empty_string_team_id_no_filter(self, temp_db):
+        temp_db.insert_fixture({
+            "fixture_id": "f1", "home_team_id": "team_a", "away_team_id": "team_b",
+            "home_team_name": "A", "away_team_name": "B",
+            "start_time": "2025-01-10T12:00:00Z", "status": "scheduled"
+        })
+        df = temp_db.get_fixtures(home_team_id="", away_team_id="")
+        assert len(df) == 1
+
+    def test_get_fixtures_from_date_to_date(self, temp_db):
+        temp_db.insert_fixture({
+            "fixture_id": "f1", "home_team_name": "A", "away_team_name": "B",
+            "start_time": "2025-01-10T12:00:00Z", "status": "scheduled"
+        })
+        temp_db.insert_fixture({
+            "fixture_id": "f2", "home_team_name": "C", "away_team_name": "D",
+            "start_time": "2025-01-15T12:00:00Z", "status": "scheduled"
+        })
+        temp_db.insert_fixture({
+            "fixture_id": "f3", "home_team_name": "E", "away_team_name": "F",
+            "start_time": "2025-01-20T12:00:00Z", "status": "scheduled"
+        })
+        df = temp_db.get_fixtures(from_date="2025-01-12", to_date="2025-01-18")
+        assert len(df) == 1
+        assert df.iloc[0]["fixture_id"] == "f2"
+
+    def test_get_fixtures_limit(self, temp_db):
+        for i in range(5):
+            temp_db.insert_fixture({
+                "fixture_id": f"f{i}", "home_team_name": "A", "away_team_name": "B",
+                "start_time": f"2025-01-{10 + i:02d}T12:00:00Z", "status": "scheduled"
+            })
+        df = temp_db.get_fixtures(limit=2)
+        assert len(df) == 2
+
+    def test_fixtures_indexes_home_away_team_id(self, temp_db):
+        with temp_db._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='index' AND name IN
+                ('idx_fixtures_home_team_id', 'idx_fixtures_away_team_id')
+            """)
+            names = [row[0] for row in cursor.fetchall()]
+            assert "idx_fixtures_home_team_id" in names
+            assert "idx_fixtures_away_team_id" in names
+
+
+class TestGetScoresQueryParams:
+    """Test get_scores fixture_id vs fixture_ids and edge cases."""
+
+    def test_get_scores_fixture_ids_batch(self, temp_db):
+        temp_db.insert_fixture({"fixture_id": "s1", "home_team_name": "A", "away_team_name": "B", "start_time": "2025-01-01T12:00:00Z", "status": "finished"})
+        temp_db.insert_fixture({"fixture_id": "s2", "home_team_name": "C", "away_team_name": "D", "start_time": "2025-01-02T12:00:00Z", "status": "finished"})
+        temp_db.insert_fixture({"fixture_id": "s3", "home_team_name": "E", "away_team_name": "F", "start_time": "2025-01-03T12:00:00Z", "status": "finished"})
+        temp_db.insert_score("s1", {"home_score": 1, "away_score": 0, "status": "finished"})
+        temp_db.insert_score("s2", {"home_score": 2, "away_score": 2, "status": "finished"})
+        temp_db.insert_score("s3", {"home_score": 0, "away_score": 1, "status": "finished"})
+        df = temp_db.get_scores(fixture_ids=["s1", "s3"])
+        assert len(df) == 2
+        assert set(df["fixture_id"].tolist()) == {"s1", "s3"}
+
+    def test_get_scores_single_fixture_id_precedence(self, temp_db):
+        temp_db.insert_fixture({"fixture_id": "a", "home_team_name": "A", "away_team_name": "B", "start_time": "2025-01-01T12:00:00Z", "status": "finished"})
+        temp_db.insert_fixture({"fixture_id": "b", "home_team_name": "C", "away_team_name": "D", "start_time": "2025-01-02T12:00:00Z", "status": "finished"})
+        temp_db.insert_score("a", {"home_score": 1, "away_score": 0, "status": "finished"})
+        temp_db.insert_score("b", {"home_score": 2, "away_score": 2, "status": "finished"})
+        df = temp_db.get_scores(fixture_id="b", fixture_ids=["a", "b"])
+        assert len(df) == 1
+        assert df.iloc[0]["fixture_id"] == "b"
+
+    def test_get_scores_empty_fixture_ids_returns_all(self, temp_db):
+        temp_db.insert_fixture({"fixture_id": "x", "home_team_name": "A", "away_team_name": "B", "start_time": "2025-01-01T12:00:00Z", "status": "finished"})
+        temp_db.insert_score("x", {"home_score": 1, "away_score": 0, "status": "finished"})
+        df = temp_db.get_scores(fixture_ids=[])
+        assert len(df) == 1
+
+    def test_get_scores_no_args_returns_all(self, temp_db):
+        temp_db.insert_fixture({"fixture_id": "y", "home_team_name": "A", "away_team_name": "B", "start_time": "2025-01-01T12:00:00Z", "status": "finished"})
+        temp_db.insert_score("y", {"home_score": 1, "away_score": 0, "status": "finished"})
+        df = temp_db.get_scores()
+        assert len(df) == 1

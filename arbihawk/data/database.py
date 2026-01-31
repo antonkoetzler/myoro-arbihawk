@@ -207,6 +207,8 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_start_time ON fixtures(start_time)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_tournament ON fixtures(tournament_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_teams_time ON fixtures(home_team_name, away_team_name, start_time)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_home_team_id ON fixtures(home_team_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fixtures_away_team_id ON fixtures(away_team_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_fixture ON odds(fixture_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_bookmaker ON odds(bookmaker_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_scores_fixture ON scores(fixture_id)")
@@ -570,39 +572,49 @@ class Database:
                     pass
             return count
     
-    def get_fixtures(self, 
+    def get_fixtures(self,
                      sport_id: Optional[int] = None,
                      tournament_id: Optional[int] = None,
                      from_date: Optional[str] = None,
                      to_date: Optional[str] = None,
+                     home_team_id: Optional[str] = None,
+                     away_team_id: Optional[str] = None,
                      limit: Optional[int] = None) -> pd.DataFrame:
-        """Get fixtures matching criteria."""
+        """Get fixtures matching criteria. Uses indexed columns when filters provided."""
         with self._get_connection() as conn:
             query = "SELECT * FROM fixtures WHERE 1=1"
-            params = []
-            
-            if sport_id:
+            params: List[Any] = []
+
+            if sport_id is not None:
                 query += " AND sport_id = ?"
                 params.append(sport_id)
-            
-            if tournament_id:
+
+            if tournament_id is not None:
                 query += " AND tournament_id = ?"
                 params.append(tournament_id)
-            
+
             if from_date:
                 query += " AND start_time >= ?"
                 params.append(from_date)
-            
+
             if to_date:
                 query += " AND start_time <= ?"
                 params.append(to_date)
-            
+
+            if home_team_id is not None and home_team_id != "":
+                query += " AND home_team_id = ?"
+                params.append(home_team_id)
+
+            if away_team_id is not None and away_team_id != "":
+                query += " AND away_team_id = ?"
+                params.append(away_team_id)
+
             query += " ORDER BY start_time"
-            
-            if limit:
+
+            if limit is not None and limit > 0:
                 query += " LIMIT ?"
                 params.append(limit)
-            
+
             return pd.read_sql_query(query, conn, params=params)
     
     def fixture_exists(self, fixture_id: str) -> bool:
@@ -611,6 +623,55 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM fixtures WHERE fixture_id = ?", (fixture_id,))
             return cursor.fetchone() is not None
+    
+    def get_fixture_by_id(self, fixture_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single fixture by fixture_id. Returns dict or None."""
+        with self._get_connection() as conn:
+            df = pd.read_sql_query(
+                "SELECT * FROM fixtures WHERE fixture_id = ?", conn, params=(fixture_id,)
+            )
+        if df.empty:
+            return None
+        row = df.iloc[0]
+        return dict(row) if row is not None else None
+    
+    def find_score_by_teams_and_date(
+        self,
+        home_team: str,
+        away_team: str,
+        start_time: Optional[str] = None,
+        min_match_score: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find a score row by teams + date (for settlement fallback when score is under synthetic ID).
+        Fetches scores, parses synthetic IDs, uses match_identity.same_match. Returns first match as dict or None.
+        """
+        from .match_identity import parse_synthetic_id, synthetic_id_matches_fixture, get_aliases_and_min_score
+        aliases, default_min = get_aliases_and_min_score()
+        threshold = min_match_score if min_match_score is not None else default_min
+        scores_df = self.get_scores()
+        if scores_df.empty:
+            return None
+        for _, row in scores_df.iterrows():
+            fid = row.get("fixture_id")
+            fid_str = str(fid) if fid else ""
+            if not parse_synthetic_id(fid_str):
+                continue
+            if synthetic_id_matches_fixture(
+                fid_str,
+                home_team,
+                away_team,
+                start_time,
+                min_score=threshold,
+                aliases_map=aliases,
+            ):
+                return {
+                    "fixture_id": fid,
+                    "home_score": row.get("home_score"),
+                    "away_score": row.get("away_score"),
+                    "status": row.get("status"),
+                }
+        return None
     
     # =========================================================================
     # ODDS OPERATIONS
@@ -742,16 +803,22 @@ class Database:
                     pass
             return count
     
-    def get_scores(self, fixture_id: Optional[str] = None) -> pd.DataFrame:
-        """Get scores."""
+    def get_scores(self,
+                   fixture_id: Optional[str] = None,
+                   fixture_ids: Optional[List[str]] = None) -> pd.DataFrame:
+        """Get scores. Single fixture_id or batch fixture_ids (IN clause)."""
         with self._get_connection() as conn:
             query = "SELECT * FROM scores WHERE 1=1"
-            params = []
-            
-            if fixture_id:
+            params: List[Any] = []
+
+            if fixture_id is not None and fixture_id != "":
                 query += " AND fixture_id = ?"
                 params.append(fixture_id)
-            
+            elif fixture_ids is not None and len(fixture_ids) > 0:
+                placeholders = ",".join("?" * len(fixture_ids))
+                query += f" AND fixture_id IN ({placeholders})"
+                params.extend(fixture_ids)
+
             return pd.read_sql_query(query, conn, params=params)
     
     # =========================================================================
@@ -1216,6 +1283,37 @@ class Database:
     # RUN HISTORY OPERATIONS
     # =========================================================================
     
+    def _convert_to_json_serializable(self, obj: Any) -> Any:
+        """
+        Recursively convert numpy/pandas types to native Python types for JSON serialization.
+        
+        Args:
+            obj: Object to convert (dict, list, or primitive)
+            
+        Returns:
+            Object with numpy/pandas types converted to native Python types
+        """
+        import numpy as np
+        
+        if isinstance(obj, dict):
+            return {k: self._convert_to_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_to_json_serializable(item) for item in obj]
+        elif isinstance(obj, (np.integer, np.int_, np.intc, np.intp, np.int8,
+                             np.int16, np.int32, np.int64, np.uint8, np.uint16,
+                             np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float16, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif pd.isna(obj):
+            return None
+        else:
+            return obj
+    
     def insert_run_history(self, run_type: str, domain: str, started_at: str,
                           completed_at: Optional[str] = None,
                           duration_seconds: Optional[float] = None,
@@ -1245,8 +1343,11 @@ class Database:
         import json
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            result_json = json.dumps(result_data) if result_data else None
-            errors_json = json.dumps(errors) if errors else None
+            # Convert numpy/pandas types before JSON serialization
+            result_data_serializable = self._convert_to_json_serializable(result_data) if result_data else None
+            errors_serializable = self._convert_to_json_serializable(errors) if errors else None
+            result_json = json.dumps(result_data_serializable) if result_data_serializable else None
+            errors_json = json.dumps(errors_serializable) if errors_serializable else None
             
             cursor.execute("""
                 INSERT INTO run_history 
@@ -2157,6 +2258,83 @@ class Database:
                 "preserved_models": preserve_models,
                 "model_versions_kept": self.get_model_versions(domain=None).shape[0] if preserve_models else 0
             }
+    
+    def reset_betting_domain(self, preserve_models: bool = True) -> Dict[str, Any]:
+        """
+        Reset only betting-related data: bet_history, bet_settlements, odds, scores,
+        fixtures, ingestion_metadata, metrics, dismissed_errors. Optionally model_versions.
+        Creates backup first. Trading tables (stocks, crypto, portfolio, etc.) are untouched.
+        """
+        from data.backup import DatabaseBackup
+        backup = DatabaseBackup(db_path=self.db_path)
+        backup_path = backup.create_backup("pre_reset_betting")
+        tables = [
+            'bet_history', 'bet_settlements', 'odds', 'scores', 'fixtures',
+            'ingestion_metadata', 'metrics', 'dismissed_errors'
+        ]
+        if not preserve_models:
+            tables.append('model_versions')
+        records_deleted = {}
+        total_deleted = 0
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            for table in tables:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count_before = cursor.fetchone()[0]
+                cursor.execute(f"DELETE FROM {table}")
+                records_deleted[table] = count_before
+                total_deleted += count_before
+            for table in tables:
+                try:
+                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name = '{table}'")
+                except Exception:
+                    pass
+            cursor.execute("PRAGMA foreign_keys = ON")
+            conn.commit()
+            cursor.execute("VACUUM")
+        return {
+            "success": True,
+            "domain": "betting",
+            "backup_path": backup_path,
+            "records_deleted": records_deleted,
+            "total_deleted": total_deleted,
+        }
+    
+    def reset_trading_domain(self) -> Dict[str, Any]:
+        """
+        Reset only trading-related data: stocks, crypto, price_history, indicators,
+        trades, positions, portfolio. Creates backup first. Betting tables are untouched.
+        """
+        from data.backup import DatabaseBackup
+        backup = DatabaseBackup(db_path=self.db_path)
+        backup_path = backup.create_backup("pre_reset_trading")
+        tables = ['trades', 'positions', 'portfolio', 'indicators', 'price_history', 'stocks', 'crypto']
+        records_deleted = {}
+        total_deleted = 0
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            for table in tables:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    count_before = cursor.fetchone()[0]
+                    cursor.execute(f"DELETE FROM {table}")
+                    records_deleted[table] = count_before
+                    total_deleted += count_before
+                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name = '{table}'")
+                except Exception:
+                    pass
+            cursor.execute("PRAGMA foreign_keys = ON")
+            conn.commit()
+            cursor.execute("VACUUM")
+        return {
+            "success": True,
+            "domain": "trading",
+            "backup_path": backup_path,
+            "records_deleted": records_deleted,
+            "total_deleted": total_deleted,
+        }
     
     def sync_from_production(self, production_db_path: str) -> Dict[str, Any]:
         """

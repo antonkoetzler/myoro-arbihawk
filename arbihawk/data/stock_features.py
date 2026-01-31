@@ -339,6 +339,12 @@ class StockFeatureEngineer:
         
         # Momentum rank features (will be filled during batch processing)
         result['momentum_score'] = result['return_20d'].fillna(0)
+
+        # Form momentum: recent vs previous period return (improving/declining trend)
+        return_5d_prev = close.pct_change(5).shift(5)  # return from 10d ago to 5d ago
+        result['momentum_trend_5d'] = (result['return_5d'] - return_5d_prev).fillna(0)
+        return_20d_prev = close.pct_change(20).shift(20)  # return from 40d ago to 20d ago
+        result['momentum_trend_20d'] = (result['return_20d'] - return_20d_prev).fillna(0)
         
         return result
     
@@ -671,7 +677,8 @@ class StockFeatureEngineer:
             'return_1d', 'return_5d', 'return_20d', 'return_60d',
             'volume_change_1d', 'volume_change_5d', 'volume_change_20d',
             'volatility_20d', 'rsi_change_5d',
-            'price_vs_sma20', 'price_vs_sma50', 'momentum_score'
+            'price_vs_sma20', 'price_vs_sma50', 'momentum_score',
+            'momentum_trend_5d', 'momentum_trend_20d'
         ]
         
         # Swing features
@@ -742,7 +749,9 @@ class StockFeatureEngineer:
         
         # Return latest row features
         latest = df.iloc[-1][available_cols]
-        return latest.fillna(0).infer_objects(copy=False)
+        # Convert to numeric first to avoid FutureWarning about downcasting object dtype
+        numeric_latest = pd.to_numeric(latest, errors='coerce')
+        return numeric_latest.fillna(0)
     
     def compute_features_batch(self, symbols: List[str], asset_type: str,
                                 strategy: str) -> pd.DataFrame:

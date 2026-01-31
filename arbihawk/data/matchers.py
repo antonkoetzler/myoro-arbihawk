@@ -1,19 +1,14 @@
 """
 Score matching service for linking match scores (Flashscore/Livescore) to Betano fixtures.
-Uses fuzzy team name matching and time proximity.
+Uses central match_identity layer (fuzzy + aliases) and time proximity.
 """
 
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 import pandas as pd
 
-try:
-    from rapidfuzz import fuzz, process
-    HAS_RAPIDFUZZ = True
-except ImportError:
-    HAS_RAPIDFUZZ = False
-
 from .database import Database
+from . import match_identity
 import config
 
 
@@ -35,124 +30,34 @@ class ScoreMatcher:
         )
     """
     
-    # Common team name variations for normalization
-    TEAM_ALIASES = {
-        "man utd": "manchester united",
-        "man united": "manchester united",
-        "man city": "manchester city",
-        "spurs": "tottenham",
-        "tottenham hotspur": "tottenham",
-        "wolverhampton": "wolves",
-        "wolverhampton wanderers": "wolves",
-        "nottm forest": "nottingham forest",
-        "west ham": "west ham united",
-        "sheffield utd": "sheffield united",
-        "newcastle utd": "newcastle united",
-        "brighton": "brighton and hove albion",
-        "real": "real madrid",
-        "atleti": "atletico madrid",
-        "atletico": "atletico madrid",
-        "barca": "barcelona",
-        "fc barcelona": "barcelona",
-        "bayern": "bayern munich",
-        "fc bayern": "bayern munich",
-        "dortmund": "borussia dortmund",
-        "bvb": "borussia dortmund",
-        "gladbach": "borussia monchengladbach",
-        "psg": "paris saint-germain",
-        "paris sg": "paris saint-germain",
-        "inter": "inter milan",
-        "internazionale": "inter milan",
-        "ac milan": "milan",
-        "juve": "juventus",
-    }
-    
     def __init__(self, db: Optional[Database] = None,
                  tolerance_hours: Optional[int] = None,
-                 min_match_score: int = 80):
+                 min_match_score: Optional[int] = None):
         """
-        Initialize matcher.
+        Initialize matcher. Uses central match_identity and config for aliases/threshold.
         
         Args:
             db: Database instance
             tolerance_hours: Time tolerance for matching (default from config)
-            min_match_score: Minimum fuzzy match score (0-100)
+            min_match_score: Minimum fuzzy match score (0-100); default from config (75)
         """
         self.db = db or Database()
         self.tolerance_hours = tolerance_hours or config.MATCHING_TOLERANCE_HOURS
-        self.min_match_score = min_match_score
+        self.min_match_score = (
+            min_match_score
+            if min_match_score is not None
+            else getattr(config, "MATCHING_MIN_MATCH_SCORE", 75)
+        )
+        self._aliases = getattr(config, "TEAM_ALIASES", {})
         self._unmatched = []
     
     def normalize_team_name(self, name: str) -> str:
-        """
-        Normalize team name for better matching.
-        
-        Args:
-            name: Original team name
-            
-        Returns:
-            Normalized team name
-        """
-        if not name:
-            return ""
-        
-        # Convert to lowercase
-        normalized = name.lower().strip()
-        
-        # Remove common suffixes
-        suffixes = [" fc", " cf", " sc", " ac", " afc", " bc"]
-        for suffix in suffixes:
-            if normalized.endswith(suffix):
-                normalized = normalized[:-len(suffix)].strip()
-        
-        # Check aliases
-        if normalized in self.TEAM_ALIASES:
-            normalized = self.TEAM_ALIASES[normalized]
-        
-        return normalized
+        """Normalize team name (delegates to match_identity)."""
+        return match_identity.normalize_team_name(name, self._aliases)
     
     def calculate_team_similarity(self, name1: str, name2: str) -> int:
-        """
-        Calculate similarity between two team names.
-        
-        Args:
-            name1: First team name
-            name2: Second team name
-            
-        Returns:
-            Similarity score (0-100)
-        """
-        n1 = self.normalize_team_name(name1)
-        n2 = self.normalize_team_name(name2)
-        
-        # Exact match after normalization
-        if n1 == n2:
-            return 100
-        
-        # Use fuzzy matching if available
-        if HAS_RAPIDFUZZ:
-            # Try different fuzzy matching strategies
-            ratio = fuzz.ratio(n1, n2)
-            partial_ratio = fuzz.partial_ratio(n1, n2)
-            token_sort = fuzz.token_sort_ratio(n1, n2)
-            
-            # Return the highest score
-            return max(ratio, partial_ratio, token_sort)
-        
-        # Fallback: simple substring matching
-        if n1 in n2 or n2 in n1:
-            return 85
-        
-        # Check if main part matches
-        n1_parts = n1.split()
-        n2_parts = n2.split()
-        
-        common = set(n1_parts) & set(n2_parts)
-        if common:
-            total = len(set(n1_parts) | set(n2_parts))
-            return int((len(common) / total) * 100)
-        
-        return 0
+        """Similarity 0-100 (delegates to match_identity)."""
+        return match_identity.team_similarity(name1, name2, self._aliases)
     
     def match_score(self, home_team: str, away_team: str,
                     match_time: str) -> Optional[str]:
@@ -184,31 +89,31 @@ class ScoreMatcher:
         fixtures = self.db.get_fixtures(from_date=start_window, to_date=end_window)
         
         if len(fixtures) == 0:
-            self._log_unmatched(home_team, away_team, match_time, "No fixtures in time window")
+            self._log_unmatched(home_team, away_team, match_time, "no fixtures in window")
             return None
         
         # Find best match
         best_match = None
         best_score = 0
+        best_score_seen = 0
         
         for _, fixture in fixtures.iterrows():
             fixture_home = fixture['home_team_name']
             fixture_away = fixture['away_team_name']
-            
-            # Calculate team similarity scores
             home_score = self.calculate_team_similarity(home_team, fixture_home)
             away_score = self.calculate_team_similarity(away_team, fixture_away)
-            
-            # Combined score (both teams must match well)
             combined_score = (home_score + away_score) / 2
-            
-            # Must meet minimum threshold
+            if combined_score > best_score_seen:
+                best_score_seen = combined_score
             if combined_score >= self.min_match_score and combined_score > best_score:
                 best_score = combined_score
                 best_match = fixture['fixture_id']
         
         if best_match is None:
-            self._log_unmatched(home_team, away_team, match_time, "No match above threshold")
+            self._log_unmatched(
+                home_team, away_team, match_time,
+                f"best score {best_score_seen:.0f} below threshold {self.min_match_score}"
+            )
         
         return best_match
     

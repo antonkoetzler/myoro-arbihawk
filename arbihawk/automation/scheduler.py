@@ -220,10 +220,17 @@ class AutomationScheduler:
     
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status."""
+        # Determine if we're in a stopping state
+        is_stopping = (
+            self._stop_event.is_set() or 
+            self._stop_task_event.is_set() or 
+            self._trading_daemon_stop_event.is_set()
+        )
         return {
             "running": self._running,
             "trading_daemon_running": self._trading_daemon_running,
             "current_task": self._current_task,
+            "stopping": is_stopping and (self._current_task is not None or self._running or self._trading_daemon_running),
             "last_collection": self._last_collection,
             "last_training": self._last_training,
             "last_betting": getattr(self, '_last_betting', None),
@@ -884,7 +891,9 @@ print(json.dumps(league_ids))
         self._log("info", "Starting full cycle with betting...")
         full_run_start = time.time()
         started_at = datetime.now()
-        
+        run_result: Optional[Dict[str, Any]] = None
+        training_result: Optional[Dict[str, Any]] = None
+        betting_result: Optional[Dict[str, Any]] = None
         try:
             # Temporarily restore full_run task name before each phase
             # (nested tasks will set their own, but we want to restore full_run after)
@@ -901,13 +910,15 @@ print(json.dumps(league_ids))
             
             # Check if stopped
             if self._stop_task_event.is_set():
-                return {
+                run_result = {
                     "collection": collection_result,
                     "training": {"success": False, "skipped": True, "reason": "Stopped"},
                     "betting": {"success": False, "skipped": True, "reason": "Stopped"},
                     "success": False,
-                    "stopped": True
+                    "stopped": True,
+                    "duration_seconds": time.time() - full_run_start
                 }
+                return run_result
             
             # Log transition to training
             self._log("info", "=" * 60)
@@ -927,13 +938,15 @@ print(json.dumps(league_ids))
             
             # Check if stopped
             if self._stop_task_event.is_set():
-                return {
+                run_result = {
                     "collection": collection_result,
                     "training": training_result,
                     "betting": {"success": False, "skipped": True, "reason": "Stopped"},
                     "success": False,
-                    "stopped": True
+                    "stopped": True,
+                    "duration_seconds": time.time() - full_run_start
                 }
+                return run_result
             
             # Log transition to betting
             self._log("info", "=" * 60)
@@ -960,37 +973,44 @@ print(json.dumps(league_ids))
             if not self._stop_task_event.is_set():
                 self._log("info", "Settling pending bets...")
                 settlement_result = self.settlement.settle_pending_bets()
-                if settlement_result.get("settled", 0) > 0:
-                    self._log("info", f"Settled {settlement_result.get('settled', 0)} bets")
+                settled_n = settlement_result.get("settled", 0)
+                total_pending = settlement_result.get("total_pending", 0)
+                if total_pending == 0:
+                    self._log("info", "No pending bets to settle")
+                else:
+                    self._log("info", f"Settled {settled_n} bets")
             
             full_run_duration = time.time() - full_run_start
             self._last_full_run_duration = full_run_duration
             self._log("success", f"Full run completed in {full_run_duration/60:.1f} minutes")
             
-            return {
+            run_result = {
                 "collection": collection_result,
                 "training": training_result,
                 "betting": betting_result,
                 "success": (
-                    collection_result.get("success", False) and 
+                    collection_result.get("success", False) and
                     training_result.get("success", False) and
                     betting_result.get("success", False)
                 ),
-                "duration_seconds": full_run_duration
+                "duration_seconds": full_run_duration,
+                "stopped": False
             }
+            return run_result
         finally:
-            # Store run history for full run
-            try:
-                self._store_run_history("full_run", started_at, {
-                    "collection": collection_result,
-                    "training": training_result,
-                    "betting": betting_result,
-                    "success": result.get("success", False),
-                    "duration_seconds": result.get("duration_seconds"),
-                    "stopped": result.get("stopped", False)
-                })
-            except Exception:
-                pass  # Don't let history storage break the run
+            # Store run history for full run (only when we have a complete run_result)
+            if run_result is not None:
+                try:
+                    self._store_run_history("full_run", started_at, {
+                        "collection": run_result.get("collection"),
+                        "training": run_result.get("training"),
+                        "betting": run_result.get("betting"),
+                        "success": run_result.get("success", False),
+                        "duration_seconds": run_result.get("duration_seconds"),
+                        "stopped": run_result.get("stopped", False)
+                    })
+                except Exception:
+                    pass  # Don't let history storage break the run
             # Only clear task if we set it (i.e., we were the top-level caller)
             # If called from trigger_full_run, that function's finally block will clear it
             if not was_full_run:
@@ -1003,8 +1023,8 @@ print(json.dumps(league_ids))
     
     def trigger_full_run(self) -> Dict[str, Any]:
         """Manually trigger full run (collection + training + betting). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("betting"):
+            return {"success": False, "error": f"Betting task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1056,16 +1076,23 @@ print(json.dumps(league_ids))
             self._stop_event.wait(interval_seconds)
         
         self._running = False
-        self._log("info", "Daemon stopped")
+        # Clear stop events so subsequent operations aren't affected
+        self._stop_event.clear()
+        self._stop_task_event.clear()
+        self._log("info", "Daemon stopped", domain="betting")
     
     def stop_daemon(self) -> None:
         """Stop daemon mode."""
         if not self._running:
-            self._log("warning", "Daemon not running")
+            self._log("warning", "Daemon not running", domain="betting")
             return
         
-        self._log("info", "Stopping daemon...")
+        self._log("warning", "Stop signal received - stopping betting daemon...", domain="betting")
         self._stop_event.set()
+        # Also stop any running task within the daemon
+        if self._current_task and not self._current_task.startswith("trading_"):
+            self._log("warning", f"Stopping current task: {self._current_task}", domain="betting")
+            self._stop_task_event.set()
     
     def start_trading_daemon(self, interval_seconds: int = 3600) -> None:
         """
@@ -1098,16 +1125,44 @@ print(json.dumps(league_ids))
             self._trading_daemon_stop_event.wait(interval_seconds)
         
         self._trading_daemon_running = False
-        self._log("info", "[TRADING] Trading daemon stopped")
+        # Clear stop events so subsequent operations aren't affected
+        self._trading_daemon_stop_event.clear()
+        self._stop_task_event.clear()
+        self._log("info", "[TRADING] Trading daemon stopped", domain="trading")
     
     def stop_trading_daemon(self) -> None:
         """Stop trading daemon mode."""
         if not self._trading_daemon_running:
-            self._log("warning", "[TRADING] Trading daemon not running")
+            self._log("warning", "[TRADING] Trading daemon not running", domain="trading")
             return
         
-        self._log("info", "[TRADING] Stopping trading daemon...")
+        self._log("warning", "[TRADING] Stop signal received - stopping trading daemon...", domain="trading")
         self._trading_daemon_stop_event.set()
+        # Also stop any running trading task within the daemon
+        if self._current_task and self._current_task.startswith("trading_"):
+            self._log("warning", f"[TRADING] Stopping current task: {self._current_task}", domain="trading")
+            self._stop_task_event.set()
+    
+    def _is_domain_task_running(self, domain: str) -> bool:
+        """Check if a task from the specified domain is currently running.
+        
+        Args:
+            domain: 'betting' or 'trading'
+            
+        Returns:
+            True if a task from the specified domain is running, False otherwise
+        """
+        if not self._current_task:
+            return False
+        
+        if domain == "betting":
+            # Betting tasks don't start with "trading_"
+            return not self._current_task.startswith("trading_")
+        elif domain == "trading":
+            # Trading tasks start with "trading_"
+            return self._current_task.startswith("trading_")
+        
+        return False
     
     def stop_task(self) -> Dict[str, Any]:
         """Stop the currently running task (collection, training, betting, or full_run)."""
@@ -1115,7 +1170,12 @@ print(json.dumps(league_ids))
             return {"success": False, "message": "No task is currently running"}
         
         task_name = self._current_task
-        self._log("info", f"Stopping {task_name}...")
+        
+        # Determine domain for logging
+        is_trading_task = task_name.startswith("trading_")
+        domain = "trading" if is_trading_task else "betting"
+        
+        self._log("warning", f"Stop signal received - stopping {task_name}...", domain=domain)
         self._stop_task_event.set()
         
         # Don't clear _current_task here - let the task's finally block handle it
@@ -1125,8 +1185,8 @@ print(json.dumps(league_ids))
     
     def trigger_collection(self) -> Dict[str, Any]:
         """Manually trigger data collection (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("betting"):
+            return {"success": False, "error": f"Betting task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1147,8 +1207,8 @@ print(json.dumps(league_ids))
     
     def trigger_training(self) -> Dict[str, Any]:
         """Manually trigger training (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("betting"):
+            return {"success": False, "error": f"Betting task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1188,6 +1248,12 @@ print(json.dumps(league_ids))
                 log_callback=lambda level, msg: self._log(level, f"[TRADING] {msg}")
             )
         return self._crypto_service
+    
+    def _get_ingestion_service(self) -> DataIngestionService:
+        """Get or create data ingestion service for trading."""
+        if self._ingestion_service is None:
+            self._ingestion_service = DataIngestionService(self.db)
+        return self._ingestion_service
     
     def run_trading_collection(self) -> Dict[str, Any]:
         """
@@ -1355,8 +1421,8 @@ print(json.dumps(league_ids))
     
     def trigger_trading_collection(self) -> Dict[str, Any]:
         """Manually trigger trading collection (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("trading"):
+            return {"success": False, "error": f"Trading task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1492,8 +1558,8 @@ print(json.dumps(league_ids))
     
     def trigger_betting(self) -> Dict[str, Any]:
         """Manually trigger betting (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("betting"):
+            return {"success": False, "error": f"Betting task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1624,8 +1690,8 @@ print(json.dumps(league_ids))
     
     def trigger_trading_training(self) -> Dict[str, Any]:
         """Manually trigger trading training (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("trading"):
+            return {"success": False, "error": f"Trading task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1728,8 +1794,8 @@ print(json.dumps(league_ids))
     
     def trigger_trading_cycle(self) -> Dict[str, Any]:
         """Manually trigger trading cycle (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("trading"):
+            return {"success": False, "error": f"Trading task already running: {self._current_task}"}
         
         def run_in_background():
             try:
@@ -1766,6 +1832,12 @@ print(json.dumps(league_ids))
         full_run_start = time.time()
         started_at = datetime.now()
         
+        # Initialize result variables for finally block
+        collection_result = {"success": False}
+        training_result = {"success": False}
+        cycle_result = {"success": False}
+        result = {"success": False}
+        
         try:
             # Phase 1: Collection
             collection_result = self.run_trading_collection()
@@ -1779,13 +1851,14 @@ print(json.dumps(league_ids))
                 self._log("warning", "[TRADING] Collection phase completed with errors")
             
             if self._stop_task_event.is_set():
-                return {
+                result = {
                     "collection": collection_result,
                     "training": {"success": False, "skipped": True, "reason": "Stopped"},
                     "cycle": {"success": False, "skipped": True, "reason": "Stopped"},
                     "success": False,
                     "stopped": True
                 }
+                return result
             
             # Phase 2: Training
             self._log("info", "=" * 60)
@@ -1803,13 +1876,14 @@ print(json.dumps(league_ids))
                 self._log("warning", "[TRADING] Training phase completed with errors")
             
             if self._stop_task_event.is_set():
-                return {
+                result = {
                     "collection": collection_result,
                     "training": training_result,
                     "cycle": {"success": False, "skipped": True, "reason": "Stopped"},
                     "success": False,
                     "stopped": True
                 }
+                return result
             
             # Phase 3: Cycle
             self._log("info", "=" * 60)
@@ -1829,7 +1903,7 @@ print(json.dumps(league_ids))
             full_run_duration = time.time() - full_run_start
             self._log("success", f"[TRADING] Full cycle completed in {full_run_duration/60:.1f} minutes")
             
-            return {
+            result = {
                 "collection": collection_result,
                 "training": training_result,
                 "cycle": cycle_result,
@@ -1840,6 +1914,7 @@ print(json.dumps(league_ids))
                 ),
                 "duration_seconds": full_run_duration
             }
+            return result
         finally:
             # Store run history for trading full run
             try:
@@ -1862,8 +1937,8 @@ print(json.dumps(league_ids))
     
     def trigger_full_trading_cycle(self) -> Dict[str, Any]:
         """Manually trigger full trading cycle (for dashboard). Runs in background thread."""
-        if self._current_task:
-            return {"success": False, "error": f"Task already running: {self._current_task}"}
+        if self._is_domain_task_running("trading"):
+            return {"success": False, "error": f"Trading task already running: {self._current_task}"}
         
         def run_in_background():
             try:

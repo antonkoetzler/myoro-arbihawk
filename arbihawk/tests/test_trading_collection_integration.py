@@ -131,16 +131,39 @@ class TestTradingCollectionIntegration:
             
             assert result["success"] is True
             assert "background" in result.get("message", "").lower()
+            # Allow background thread to finish so temp_db teardown can delete the file (Windows)
+            time.sleep(0.5)
     
     def test_trigger_trading_collection_busy(self, temp_db):
-        """Test trigger_trading_collection when another task is running."""
+        """Test trigger_trading_collection when another trading task is running."""
         scheduler = AutomationScheduler(db=temp_db)
-        scheduler._current_task = "collection"  # Simulate running task
+        scheduler._current_task = "trading_collection"  # Trading task running
         
         result = scheduler.trigger_trading_collection()
         
         assert result["success"] is False
         assert "already running" in result.get("error", "").lower()
+
+    def test_run_full_with_betting_early_return_finally_no_crash(self, temp_db):
+        """Test that run_full_with_betting finally block does not crash on early return (run_result defined)."""
+        scheduler = AutomationScheduler(db=temp_db)
+        scheduler._stop_task_event.clear()
+
+        def stop_after_collection():
+            scheduler._stop_task_event.set()
+            return {"success": True, "records": 0}
+
+        with patch.object(scheduler, 'run_collection', side_effect=stop_after_collection):
+            result = scheduler.run_full_with_betting()
+
+        assert result is not None
+        assert result.get("stopped") is True
+        assert "collection" in result
+        assert "training" in result
+        assert result["training"].get("skipped") is True
+        assert "betting" in result
+        assert result["betting"].get("skipped") is True
+        assert "duration_seconds" in result
 
 
 class TestDomainSeparation:
@@ -301,7 +324,7 @@ class TestErrorHandling:
             yield db
     
     def test_collection_continues_on_partial_failure(self, temp_db):
-        """Test that collection continues even if some symbols fail."""
+        """Test that collection continues even if some symbols fail (partial success)."""
         with patch('config.TRADING_CONFIG', {
             "enabled": True,
             "watchlist": {
@@ -315,19 +338,19 @@ class TestErrorHandling:
         }):
             scheduler = AutomationScheduler(db=temp_db)
             
-            with patch.object(scheduler, '_get_stock_service') as mock_stock:
-                mock_service = MagicMock()
-                mock_service.collect_all.return_value = {
-                    "collected": 1,
-                    "failed": 1,
-                    "total_prices": 100,
-                    "errors": ["INVALID: Failed to fetch data"]
+            # Scheduler uses ingestion_service.ingest_from_subprocess, not stock service
+            with patch.object(scheduler, '_get_ingestion_service') as mock_get_ingestion:
+                mock_ingestion = MagicMock()
+                mock_ingestion.ingest_from_subprocess.return_value = {
+                    "success": True,
+                    "records": 300,
+                    "error": None
                 }
-                mock_stock.return_value = mock_service
+                mock_get_ingestion.return_value = mock_ingestion
                 
                 result = scheduler.run_trading_collection()
                 
-                # Partial success should still be success
+                # Partial success (1+ symbol collected) should still be success
                 assert result["success"] is True
                 assert result["stocks"]["collected"] == 1
                 assert result["stocks"]["failed"] == 1

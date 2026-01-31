@@ -53,7 +53,9 @@ export interface TopConfidenceBet {
   away_team: string;
   start_time: string;
   market: string;
+  market_display?: string;
   outcome: string;
+  outcome_display?: string;
   odds: number;
   probability: number;
   expected_value: number;
@@ -90,7 +92,9 @@ export interface ModelsResponse {
 
 export interface AutomationStatus {
   running: boolean;
+  trading_daemon_running?: boolean;
   current_task?: string;
+  stopping?: boolean;  // True when stop signal has been sent
   last_collection?: string;
   last_training?: string;
   last_betting?: string;

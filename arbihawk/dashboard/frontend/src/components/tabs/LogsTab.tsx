@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { Inbox } from 'lucide-react';
+import { Inbox, Copy } from 'lucide-react';
 import { EmptyState } from '../EmptyState';
 import { getLogLevelColor } from '../../utils/formatters';
 import type { WebSocketLog } from '../../types';
@@ -111,6 +111,19 @@ function LogSection({ title, logs, colorClass, isSingleView }: LogSectionProps) 
     };
   }, []);
 
+  const copyAllLogs = useCallback(() => {
+    const text = logs
+      .map(log => {
+        const parts = [log.timestamp, `[${(log.level ?? '').toUpperCase()}]`];
+        if (log.domain) parts.push(`[${log.domain}]`);
+        if (log.type) parts.push(`[${log.type}]`);
+        parts.push(log.message ?? '');
+        return parts.join(' ');
+      })
+      .join('\n');
+    void navigator.clipboard.writeText(text);
+  }, [logs]);
+
   return (
     <div className={`${isSingleView ? 'w-full' : 'flex-1'} min-w-0`}>
       <div className='mb-2 flex items-center justify-between'>
@@ -121,29 +134,40 @@ function LogSection({ title, logs, colorClass, isSingleView }: LogSectionProps) 
             ({logs.length})
           </span>
         </div>
-        <button
-          onClick={() => {
-            if (autoScroll) {
-              if (logsContainerRef.current) {
-                savedScrollTopRef.current = logsContainerRef.current.scrollTop;
-                wasAtBottomBeforeUpdateRef.current = false;
+        <div className='flex items-center gap-1'>
+          <button
+            onClick={copyAllLogs}
+            disabled={logs.length === 0}
+            className='rounded bg-slate-700/50 p-1.5 text-slate-400 hover:bg-slate-700 hover:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed'
+            type='button'
+            title='Copy all logs'
+          >
+            <Copy className='h-3.5 w-3.5' />
+          </button>
+          <button
+            onClick={() => {
+              if (autoScroll) {
+                if (logsContainerRef.current) {
+                  savedScrollTopRef.current = logsContainerRef.current.scrollTop;
+                  wasAtBottomBeforeUpdateRef.current = false;
+                }
+                setAutoScroll(false);
+              } else {
+                if (logsContainerRef.current) {
+                  const container = logsContainerRef.current;
+                  container.scrollTop = container.scrollHeight;
+                  wasAtBottomBeforeUpdateRef.current = true;
+                  savedScrollTopRef.current = container.scrollTop;
+                  setAutoScroll(true);
+                }
               }
-              setAutoScroll(false);
-            } else {
-              if (logsContainerRef.current) {
-                const container = logsContainerRef.current;
-                container.scrollTop = container.scrollHeight;
-                wasAtBottomBeforeUpdateRef.current = true;
-                savedScrollTopRef.current = container.scrollTop;
-                setAutoScroll(true);
-              }
-            }
-          }}
-          className='rounded bg-slate-700/50 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-700'
-          type='button'
-        >
-          {autoScroll ? 'Pause' : 'Resume'}
-        </button>
+            }}
+            className='rounded bg-slate-700/50 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-700'
+            type='button'
+          >
+            {autoScroll ? 'Pause' : 'Resume'}
+          </button>
+        </div>
       </div>
       <div
         ref={logsContainerRef}
@@ -243,7 +267,7 @@ export function LogsTab({ wsLogs, wsConnected }: LogsTabProps) {
   useEffect(() => {
     localStorage.setItem(LOGS_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
-  
+
   // Separate logs by domain - use domain field primarily, fallback to message content
   const bettingLogs = wsLogs.filter(log => {
     const domain = log.domain || 'betting';
@@ -251,27 +275,27 @@ export function LogsTab({ wsLogs, wsConnected }: LogsTabProps) {
     if (domain === 'betting') return true;
     if (domain === 'trading') return false;
     // Fallback: check message content for trading indicators
-    const isTradingMessage = log.message?.includes('[TRADING]') || 
-                             log.message?.includes('[STOCKS]') || 
-                             log.message?.includes('[CRYPTO]') ||
-                             log.message?.includes('Training MOMENTUM') ||
-                             log.message?.includes('Training SWING') ||
-                             log.message?.includes('Training VOLATILITY');
+    const isTradingMessage = log.message?.includes('[TRADING]') ||
+      log.message?.includes('[STOCKS]') ||
+      log.message?.includes('[CRYPTO]') ||
+      log.message?.includes('Training MOMENTUM') ||
+      log.message?.includes('Training SWING') ||
+      log.message?.includes('Training VOLATILITY');
     return !isTradingMessage;
   });
-  
+
   const tradingLogs = wsLogs.filter(log => {
     const domain = log.domain || 'betting';
     // If domain is explicitly set, use it
     if (domain === 'trading') return true;
     if (domain === 'betting') return false;
     // Fallback: check message content for trading indicators
-    const isTradingMessage = log.message?.includes('[TRADING]') || 
-                             log.message?.includes('[STOCKS]') || 
-                             log.message?.includes('[CRYPTO]') ||
-                             log.message?.includes('Training MOMENTUM') ||
-                             log.message?.includes('Training SWING') ||
-                             log.message?.includes('Training VOLATILITY');
+    const isTradingMessage = log.message?.includes('[TRADING]') ||
+      log.message?.includes('[STOCKS]') ||
+      log.message?.includes('[CRYPTO]') ||
+      log.message?.includes('Training MOMENTUM') ||
+      log.message?.includes('Training SWING') ||
+      log.message?.includes('Training VOLATILITY');
     return isTradingMessage;
   });
 
@@ -285,33 +309,30 @@ export function LogsTab({ wsLogs, wsConnected }: LogsTabProps) {
             <div className='flex items-center gap-1 rounded-lg bg-slate-800/50 p-1'>
               <button
                 onClick={() => setViewMode('dual')}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  viewMode === 'dual'
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${viewMode === 'dual'
                     ? 'bg-emerald-500/20 text-emerald-400'
                     : 'text-slate-400 hover:text-slate-300'
-                }`}
+                  }`}
                 type='button'
               >
                 Dual
               </button>
               <button
                 onClick={() => setViewMode('betting')}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  viewMode === 'betting'
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${viewMode === 'betting'
                     ? 'bg-sky-500/20 text-sky-400'
                     : 'text-slate-400 hover:text-slate-300'
-                }`}
+                  }`}
                 type='button'
               >
                 Betting
               </button>
               <button
                 onClick={() => setViewMode('trading')}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  viewMode === 'trading'
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${viewMode === 'trading'
                     ? 'bg-emerald-500/20 text-emerald-400'
                     : 'text-slate-400 hover:text-slate-300'
-                }`}
+                  }`}
                 type='button'
               >
                 Trading
@@ -327,7 +348,7 @@ export function LogsTab({ wsLogs, wsConnected }: LogsTabProps) {
             </div>
           </div>
         </div>
-        
+
         {/* Dynamic layout based on view mode */}
         <div className={`flex gap-4 ${viewMode === 'dual' ? '' : ''}`}>
           {(viewMode === 'dual' || viewMode === 'betting') && (

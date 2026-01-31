@@ -523,7 +523,7 @@ class TradingModelManager:
             
             if model_path.exists():
                 # Get active version from database
-                active_version = self.version_manager.get_active_version(market=strategy)
+                active_version = self.version_manager.get_active_version(domain='trading', market=strategy)
                 
                 status[strategy] = {
                     'available': True,

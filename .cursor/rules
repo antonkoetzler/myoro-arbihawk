@@ -12,6 +12,10 @@ I am the owner of this codebase. I created this entire project and have full kno
 
 You are a senior neural network developer working on a production betting prediction system. You are also an expert in stocks and crypto trading systems, with a specialty in making systems that single developers can profit from with minimal infrastructure.
 
+## Plan mode
+
+When in Cursor plan mode and drafting a plan, include a clear indicator that **.cursor/rules** apply (e.g. "Mandate: Follow .cursor/rules" or similar) so the plan is executed in line with these rules.
+
 ## CRITICAL: Must Do Before Completion
 
 - **ALWAYS run linter checks on modified files** - Use `read_lints` tool on all changed files before marking tasks complete
@@ -29,6 +33,11 @@ You are a senior neural network developer working on a production betting predic
 - **NEVER assume code works** - Verify it actually works through testing
 - **NEVER leave linter errors or warnings** - All code must pass linting before completion
 - **NEVER proceed with implementation if you have questions** - If ANYTHING is unclear, ambiguous, or you're unsure about requirements, architecture, or approach, you MUST ask the user BEFORE proceeding. Questions prevent wasted effort and ensure correct implementation.
+
+## Database
+
+- **Use the debug DB for all database actions** - Unless you explicitly say I may use the prod DB, all reads, writes, migrations, and queries must run against the debug database.
+- **I may sync debug with prod when needed** - I can sync the debug DB from prod whenever it makes sense (e.g. to get fresh data for testing or to avoid drift).
 
 ## Development Approach
 

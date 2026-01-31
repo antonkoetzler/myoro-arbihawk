@@ -155,8 +155,9 @@ export function AutomationTab({
 
   const stopMutation = useMutation({
     mutationFn: api.stopAutomation,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['status'] });
+      showToast('Stop signal sent', 'success');
     },
     onError: (error: Error) => {
       showToast(error.message ?? 'Failed to stop automation', 'error');
@@ -246,12 +247,15 @@ export function AutomationTab({
 
   const stopTradingDaemonMutation = useMutation({
     mutationFn: api.stopTradingDaemon,
-    onSuccess: () => {
-      showToast('Trading daemon stop signal sent', 'success');
-      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['status'] }),
+        queryClient.refetchQueries({ queryKey: ['trading-status'] }),
+      ]);
+      showToast('Stop signal sent', 'success');
     },
     onError: (error: Error) => {
-      showToast(error.message ?? 'Failed to stop trading daemon', 'error');
+      showToast(error.message ?? 'Failed to stop trading automation', 'error');
     },
   });
 
@@ -266,13 +270,31 @@ export function AutomationTab({
     },
   });
 
-  const isBettingTaskRunning = !!status?.current_task;
+  // Check if betting task is running (betting tasks don't start with "trading_")
+  const isBettingTaskRunning = !!(status?.current_task && !status.current_task.startsWith('trading_'));
+  // Check if trading task is running (trading tasks start with "trading_")
   const isTradingTaskRunning = tradingStatus?.current_task ? true : false;
-  const taskButtonTooltip = isBettingTaskRunning || isTradingTaskRunning
-    ? 'You can only run one task at a time'
+  // Check if betting daemon is running
+  const isBettingDaemonRunning = status?.running || false;
+  // Check if trading daemon is running
+  const isTradingDaemonRunning = status?.trading_daemon_running || false;
+  
+  // For betting domain: stop button enabled if task OR daemon is running
+  const isBettingRunning = isBettingTaskRunning || isBettingDaemonRunning;
+  // For trading domain: stop button enabled if task OR daemon is running
+  const isTradingRunning = isTradingTaskRunning || isTradingDaemonRunning;
+  
+  const bettingTaskButtonTooltip = isBettingTaskRunning || isBettingDaemonRunning
+    ? 'You can only run one task at a time for betting'
     : '';
-  const stopButtonTooltip = !isBettingTaskRunning && !isTradingTaskRunning
-    ? 'No task is currently running'
+  const tradingTaskButtonTooltip = isTradingTaskRunning || isTradingDaemonRunning
+    ? 'You can only run one task at a time for trading'
+    : '';
+  const bettingStopButtonTooltip = !isBettingRunning
+    ? 'No betting task or daemon is currently running'
+    : '';
+  const tradingStopButtonTooltip = !isTradingRunning
+    ? 'No trading task or daemon is currently running'
     : '';
 
   return (
@@ -329,7 +351,14 @@ export function AutomationTab({
           <div className='mb-6 grid grid-cols-1 gap-4 md:grid-cols-4'>
             <div className='rounded-lg bg-slate-800/50 p-4'>
               <p className='text-sm text-slate-400'>Current Task</p>
-              <p className='font-medium'>{status?.current_task ?? 'None'}</p>
+              <p className='font-medium'>
+                {/* Only show betting tasks (tasks that don't start with trading_) */}
+                {status?.current_task && !status.current_task.startsWith('trading_')
+                  ? status.stopping 
+                    ? `${status.current_task} (Stopping...)`
+                    : status.current_task
+                  : 'None'}
+              </p>
             </div>
             <div className='rounded-lg bg-slate-800/50 p-4'>
               <p className='text-sm text-slate-400'>Last Collection</p>
@@ -437,54 +466,62 @@ export function AutomationTab({
                   <ChevronDown size={16} className={`transition-transform ${bettingMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
               </div>
-              <Tooltip text={stopButtonTooltip}>
+              <Tooltip text={bettingStopButtonTooltip}>
                 <button
                   onClick={() => stopMutation.mutate()}
-                  disabled={!isBettingTaskRunning || stopMutation.isPending}
+                  disabled={!isBettingRunning || stopMutation.isPending}
                   className='btn-danger flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
                   type='button'
                 >
-                  <Square size={16} /> Stop
+                  {stopMutation.isPending ? (
+                    <>
+                      <RefreshCw size={16} className='animate-spin' /> Stopping...
+                    </>
+                  ) : (
+                    <>
+                      <Square size={16} /> Stop
+                    </>
+                  )}
                 </button>
               </Tooltip>
             </div>
             {bettingMenuOpen && (
               <div className='rounded-lg border border-slate-700 bg-slate-800/50 p-1'>
-                <Tooltip text={taskButtonTooltip}>
+                <Tooltip text={bettingTaskButtonTooltip}>
                   <button
                     onClick={() => {
                       triggerCollectionWithWorkers();
                       setBettingMenuOpen(false);
                     }}
-                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    disabled={triggerMutation.isPending || isBettingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
                     <Play size={16} /> Run Collection
                   </button>
                 </Tooltip>
-                <Tooltip text={taskButtonTooltip}>
+                <Tooltip text={bettingTaskButtonTooltip}>
                   <button
                     onClick={() => {
                       if (onSwitchToLogs) onSwitchToLogs();
                       triggerMutation.mutate('train');
                       setBettingMenuOpen(false);
                     }}
-                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    disabled={triggerMutation.isPending || isBettingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
                     <RefreshCw size={16} /> Run Training
                   </button>
                 </Tooltip>
-                <Tooltip text={taskButtonTooltip}>
+                <Tooltip text={bettingTaskButtonTooltip}>
                   <button
                     onClick={() => {
                       if (onSwitchToLogs) onSwitchToLogs();
                       triggerMutation.mutate('betting');
                       setBettingMenuOpen(false);
                     }}
-                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    disabled={triggerMutation.isPending || isBettingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
@@ -492,13 +529,13 @@ export function AutomationTab({
                   </button>
                 </Tooltip>
                 <div className='my-1 border-t border-slate-700' />
-                <Tooltip text={taskButtonTooltip || 'Run collection, training, and betting in sequence'} className='w-full'>
+                <Tooltip text={bettingTaskButtonTooltip || 'Run collection, training, and betting in sequence'} className='w-full'>
                   <button
                     onClick={() => {
                       triggerFullRunWithWorkers();
                       setBettingMenuOpen(false);
                     }}
-                    disabled={triggerMutation.isPending || isBettingTaskRunning}
+                    disabled={triggerMutation.isPending || isBettingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
@@ -512,24 +549,11 @@ export function AutomationTab({
                       startDaemonMutation.mutate();
                       setBettingMenuOpen(false);
                     }}
-                    disabled={startDaemonMutation.isPending || status?.running}
+                    disabled={startDaemonMutation.isPending || isBettingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
                     <Play size={16} /> Run Daemon
-                  </button>
-                </Tooltip>
-                <Tooltip text='Stop daemon mode' className='w-full'>
-                  <button
-                    onClick={() => {
-                      stopMutation.mutate();
-                      setBettingMenuOpen(false);
-                    }}
-                    disabled={stopMutation.isPending || !status?.running}
-                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
-                    type='button'
-                  >
-                    <Square size={16} /> Stop Daemon
                   </button>
                 </Tooltip>
               </div>
@@ -549,53 +573,61 @@ export function AutomationTab({
                   <ChevronDown size={16} className={`transition-transform ${tradingMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
               </div>
-              <Tooltip text={stopButtonTooltip}>
+              <Tooltip text={tradingStopButtonTooltip}>
                 <button
-                  onClick={() => stopMutation.mutate()}
-                  disabled={!isTradingTaskRunning || stopMutation.isPending}
+                  onClick={() => stopTradingDaemonMutation.mutate()}
+                  disabled={!isTradingRunning || stopTradingDaemonMutation.isPending}
                   className='btn-danger flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50'
                   type='button'
                 >
-                  <Square size={16} /> Stop
+                  {stopTradingDaemonMutation.isPending ? (
+                    <>
+                      <RefreshCw size={16} className='animate-spin' /> Stopping...
+                    </>
+                  ) : (
+                    <>
+                      <Square size={16} /> Stop
+                    </>
+                  )}
                 </button>
               </Tooltip>
             </div>
             {tradingMenuOpen && (
               <div className='rounded-lg border border-slate-700 bg-slate-800/50 p-1'>
-                <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+                <Tooltip text={tradingStatus?.enabled ? tradingTaskButtonTooltip : 'Trading is disabled in configuration'}>
                   <button
                     onClick={() => {
                       tradingCollectionMutation.mutate();
                       setTradingMenuOpen(false);
                     }}
-                    disabled={!tradingStatus?.enabled || tradingCollectionMutation.isPending || isTradingTaskRunning}
+                    disabled={!tradingStatus?.enabled || tradingCollectionMutation.isPending || isTradingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
                     <RefreshCw size={16} /> Collect Data
                   </button>
                 </Tooltip>
-                <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+                <Tooltip text={tradingStatus?.enabled ? tradingTaskButtonTooltip : 'Trading is disabled in configuration'}>
                   <button
                     onClick={() => {
                       tradingTrainingMutation.mutate();
                       setTradingMenuOpen(false);
                     }}
-                    disabled={!tradingStatus?.enabled || tradingTrainingMutation.isPending || isTradingTaskRunning}
+                    disabled={!tradingStatus?.enabled || tradingTrainingMutation.isPending || isTradingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
                     <Zap size={16} /> Train Models
                   </button>
                 </Tooltip>
-                <Tooltip text={tradingStatus?.enabled ? '' : 'Trading is disabled in configuration'}>
+                <Tooltip text={tradingStatus?.enabled ? tradingTaskButtonTooltip : 'Trading is disabled in configuration'}>
                   <button
                     onClick={() => {
                       if (onSwitchToLogs) onSwitchToLogs();
                       tradingCycleMutation.mutate();
                       setTradingMenuOpen(false);
                     }}
-                    disabled={!tradingStatus?.enabled || tradingCycleMutation.isPending || isTradingTaskRunning}
+                    disabled={!tradingStatus?.enabled || tradingCycleMutation.isPending || isTradingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
@@ -603,14 +635,14 @@ export function AutomationTab({
                   </button>
                 </Tooltip>
                 <div className='my-1 border-t border-slate-700' />
-                <Tooltip text={tradingStatus?.enabled ? 'Run collection, training, and cycle in sequence' : 'Trading is disabled in configuration'} className='w-full'>
+                <Tooltip text={tradingStatus?.enabled ? (tradingTaskButtonTooltip || 'Run collection, training, and cycle in sequence') : 'Trading is disabled in configuration'} className='w-full'>
                   <button
                     onClick={() => {
                       if (onSwitchToLogs) onSwitchToLogs();
                       fullTradingCycleMutation.mutate();
                       setTradingMenuOpen(false);
                     }}
-                    disabled={!tradingStatus?.enabled || fullTradingCycleMutation.isPending || isTradingTaskRunning}
+                    disabled={!tradingStatus?.enabled || fullTradingCycleMutation.isPending || isTradingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
@@ -624,24 +656,11 @@ export function AutomationTab({
                       startTradingDaemonMutation.mutate();
                       setTradingMenuOpen(false);
                     }}
-                    disabled={!tradingStatus?.enabled || startTradingDaemonMutation.isPending || status?.trading_daemon_running}
+                    disabled={!tradingStatus?.enabled || startTradingDaemonMutation.isPending || isTradingRunning}
                     className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                     type='button'
                   >
                     <Play size={16} /> Start Daemon
-                  </button>
-                </Tooltip>
-                <Tooltip text='Stop trading daemon mode' className='w-full'>
-                  <button
-                    onClick={() => {
-                      stopTradingDaemonMutation.mutate();
-                      setTradingMenuOpen(false);
-                    }}
-                    disabled={stopTradingDaemonMutation.isPending || !status?.trading_daemon_running}
-                    className='w-full flex items-center gap-2 rounded px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
-                    type='button'
-                  >
-                    <Square size={16} /> Stop Daemon
                   </button>
                 </Tooltip>
                 <div className='my-1 border-t border-slate-700' />

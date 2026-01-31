@@ -29,6 +29,8 @@ class TestPaperTradingExecutor:
         pm = Mock()
         pm.get_balance.return_value = 10000.0
         pm.get_available_cash.return_value = 8500.0
+        pm.get_portfolio_value.return_value = 10000.0
+        pm.max_position_size = 0.05
         pm.can_open_position.return_value = (True, "OK")
         pm.update_cash_balance = Mock()
         pm.invalidate_cache = Mock()

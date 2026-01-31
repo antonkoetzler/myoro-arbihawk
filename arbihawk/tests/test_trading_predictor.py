@@ -161,3 +161,29 @@ class TestModelMetrics:
         # Probabilities should be in [0, 1]
         assert (probs['up'] >= 0).all()
         assert (probs['up'] <= 1).all()
+
+
+class TestTradingModelManager:
+    """Tests for TradingModelManager (versioning and get_model_status with domain='trading')."""
+
+    def test_get_model_status_returns_dict_with_domain_trading(self):
+        """get_model_status must call get_active_version(domain='trading', market=strategy)."""
+        import tempfile
+        from pathlib import Path
+        from data.database import Database
+        from models.trading_predictor import TradingModelManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            db = Database(db_path=str(db_path))
+            mgr = TradingModelManager(db)
+            # Should not raise TypeError (missing domain)
+            status = mgr.get_model_status()
+        assert isinstance(status, dict)
+        assert "momentum" in status
+        assert "swing" in status
+        assert "volatility" in status
+        for strategy in ("momentum", "swing", "volatility"):
+            assert "available" in status[strategy]
+            assert "path" in status[strategy]
+            assert "version" in status[strategy]

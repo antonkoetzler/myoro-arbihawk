@@ -27,4 +27,4 @@
   - Make sure all Pyhton code has provided functionality
   - Do not leave residual files hanging around, if you want to keep any files to reuse later, in a different chat add them to `.cursor/scripts`
 
-8. After you've completed the task(s), you will remove the task(s) from `./arbihawk/docs/backlog.md` do NOT leave the tasks in a "implemented" state in the file, remove the tasks from the backlog completely
+8. After you've completed the task(s), you will remove the task(s) from `./arbihawk/docs/backlog.md` completely—do NOT leave them in an "implemented" or "Recently Completed" state, and do NOT re-add completed tasks to the backlog in any form

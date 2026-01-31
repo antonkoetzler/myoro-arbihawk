@@ -1,10 +1,11 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Search, Activity, TrendingUp, Database, Target, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Search, Activity, TrendingUp, Database, Target, Clock, HelpCircle } from 'lucide-react';
 import type { createApi } from '../../api/api';
 import type { BetsResponse, TopConfidenceBet } from '../../types';
 import { StatCard } from '../StatCard';
+import { Tooltip } from '../Tooltip';
 import { formatPercent, formatMoney } from '../../utils/formatters';
 
 interface BettingTabProps {
@@ -40,7 +41,12 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
   const [tempDateTo, setTempDateTo] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [topBetSortBy, setTopBetSortBy] = useState<'confidence' | 'ev'>('confidence');
+  const [topBetsSearch, setTopBetsSearch] = useState('');
+  const [topBetsPerPage, setTopBetsPerPage] = useState(10);
+  const [topBetsPage, setTopBetsPage] = useState(1);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const EV_TOOLTIP = "Expected Value: your edge over the bookmaker's odds. Positive EV means the bet is profitable in the long run.";
 
   const queryParams = useMemo(() => ({
     ...filters,
@@ -71,20 +77,45 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
   const uniqueMarkets = filterValues?.markets ?? [];
   const uniqueTournaments = filterValues?.tournaments ?? [];
 
-  // Fetch top confidence bet
+  // Fetch top confidence bets (hero + list; API returns up to 10)
   const { data: topBetData, isLoading: isLoadingTopBet } = useQuery({
     queryKey: ['top-confidence-bet', topBetSortBy],
-    queryFn: () => api.getTopConfidenceBet(topBetSortBy, 1),
+    queryFn: () => api.getTopConfidenceBet(topBetSortBy, 10),
     refetchInterval: 45000, // Refresh every 45 seconds
     retry: false,
   });
 
-  const topBet: TopConfidenceBet | undefined = topBetData?.bets?.[0];
+  const topBetsList = topBetData?.bets ?? [];
+  const topBet: TopConfidenceBet | undefined = topBetsList[0];
+  const moreBets = topBetsList.slice(1);
+
+  const filteredMoreBets = useMemo(() => {
+    if (!topBetsSearch.trim()) return moreBets;
+    const q = topBetsSearch.trim().toLowerCase();
+    return moreBets.filter(
+      (bet) =>
+        `${bet.home_team} ${bet.away_team}`.toLowerCase().includes(q) ||
+        (bet.outcome_display ?? bet.outcome).toLowerCase().includes(q) ||
+        (bet.market_display ?? bet.market).toLowerCase().includes(q) ||
+        (bet.tournament_name ?? '').toLowerCase().includes(q)
+    );
+  }, [moreBets, topBetsSearch]);
+
+  const topBetsTotalPages = Math.max(1, Math.ceil(filteredMoreBets.length / topBetsPerPage));
+  const topBetsPageClamped = Math.min(topBetsPage, topBetsTotalPages);
+  const visibleMoreBets = useMemo(() => {
+    const start = (topBetsPageClamped - 1) * topBetsPerPage;
+    return filteredMoreBets.slice(start, start + topBetsPerPage);
+  }, [filteredMoreBets, topBetsPerPage, topBetsPageClamped]);
+
+  useEffect(() => {
+    setTopBetsPage(1);
+  }, [topBetSortBy, topBetData, topBetsSearch, topBetsPerPage]);
 
   // Apply client-side sorting (search is handled server-side)
   const sortedBets = useMemo(() => {
     if (!sortColumn || !sortDirection) return bets;
-    
+
     const sorted = [...bets];
     sorted.sort((a, b) => {
       let aVal: number | string | undefined;
@@ -111,7 +142,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
 
       if (aVal === undefined) return 1;
       if (bVal === undefined) return -1;
-      
+
       const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
       return sortDirection === 'asc' ? comparison : -comparison;
     });
@@ -161,7 +192,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
     if (!activeFilter) return;
 
     const newFilters = { ...filters };
-    
+
     switch (activeFilter) {
       case 'date':
         if (tempDateFrom) newFilters.date_from = tempDateFrom;
@@ -256,7 +287,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
         // No timezone info, assume UTC and append 'Z' to force UTC parsing
         date = new Date(dateString + 'Z');
       }
-      
+
       // Use local timezone methods (getDate, getHours, etc. automatically use local timezone)
       const day = String(date.getDate()).padStart(2, '0');
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -264,7 +295,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const seconds = String(date.getSeconds()).padStart(2, '0');
-      
+
       return {
         date: `${day}/${month}/${year}`,
         time: `${hours}:${minutes}:${seconds}`
@@ -291,13 +322,13 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
     if (!activeFilter) return null;
 
     const modalContent = (
-      <div 
+      <div
         className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/50'
-        style={{ 
-          position: 'fixed', 
-          top: 0, 
-          left: 0, 
-          right: 0, 
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
           bottom: 0,
           width: '100vw',
           height: '100vh',
@@ -305,7 +336,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
           padding: 0
         }}
       >
-        <div 
+        <div
           ref={modalRef}
           className='w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl'
           onClick={(e) => e.stopPropagation()}
@@ -446,7 +477,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
       const diffMs = date.getTime() - now.getTime();
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      
+
       if (diffMs < 0) {
         return 'Started';
       } else if (diffHours > 0) {
@@ -483,28 +514,26 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
               <Target className='text-emerald-400' size={24} />
             </div>
             <div>
-              <h2 className='text-xl font-bold text-slate-100'>Today's Top Bet</h2>
+              <h2 className='text-xl font-bold text-slate-100'>Today's Top Bets</h2>
               <p className='text-sm text-slate-400'>Most confident recommendation for today</p>
             </div>
           </div>
           <div className='flex gap-2'>
             <button
               onClick={() => setTopBetSortBy('confidence')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                topBetSortBy === 'confidence'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${topBetSortBy === 'confidence'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
             >
               Highest Confidence
             </button>
             <button
               onClick={() => setTopBetSortBy('ev')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                topBetSortBy === 'ev'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${topBetSortBy === 'ev'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
             >
               Best Value (EV)
             </button>
@@ -514,7 +543,8 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
         {isLoadingTopBet ? (
           <div className='py-8 text-center text-slate-400'>
             <div className='inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-500'></div>
-            <p className='mt-2'>Loading top bet...</p>
+            <p className='mt-2'>Loading top bets...</p>
+            <p className='mt-1 text-xs text-slate-500'>This may take a moment—loading models and computing value bets.</p>
           </div>
         ) : topBet ? (
           <div className='grid grid-cols-1 gap-6 md:grid-cols-3'>
@@ -539,8 +569,8 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
             <div className='space-y-3'>
               <div>
                 <p className='text-xs text-slate-400'>Recommendation</p>
-                <p className='text-lg font-semibold text-slate-100'>{topBet.outcome}</p>
-                <p className='text-sm text-slate-400'>{topBet.market}</p>
+                <p className='text-lg font-semibold text-slate-100'>{topBet.outcome_display ?? topBet.outcome}</p>
+                <p className='text-sm text-slate-400'>{topBet.market_display ?? topBet.market}</p>
               </div>
               <div className='flex items-center gap-2'>
                 <span className='text-sm text-slate-400'>Odds:</span>
@@ -560,7 +590,12 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
                 </p>
               </div>
               <div>
-                <p className='text-xs text-slate-400'>Expected Value</p>
+                <div className='flex items-center gap-1.5'>
+                  <p className='text-xs text-slate-400'>Expected Value</p>
+                  <Tooltip text={EV_TOOLTIP}>
+                    <HelpCircle className='text-slate-500 hover:text-slate-400' size={12} aria-label='What is EV?' />
+                  </Tooltip>
+                </div>
                 <p className={`text-xl font-semibold ${getEVColor(topBet.expected_value)}`}>
                   {(topBet.expected_value * 100).toFixed(1)}%
                 </p>
@@ -576,6 +611,111 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
             <p className='mt-1 text-xs text-slate-500'>
               Check back later or run data collection and training
             </p>
+          </div>
+        )}
+
+        {/* More top bets table: only when there are 2+ bets total */}
+        {!isLoadingTopBet && moreBets.length > 0 && (
+          <div className='mt-6 border-t border-slate-700 pt-4'>
+            <h3 className='mb-3 text-sm font-medium text-slate-300'>More top bets</h3>
+            <div className='mb-3 flex flex-wrap items-center gap-3'>
+              <div className='relative flex-1 min-w-[160px] max-w-xs'>
+                <Search className='absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500' />
+                <input
+                  type='text'
+                  placeholder='Search match, bet, market...'
+                  value={topBetsSearch}
+                  onChange={(e) => setTopBetsSearch(e.target.value)}
+                  className='w-full rounded-lg border border-slate-600 bg-slate-800 py-1.5 pl-8 pr-3 text-sm text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none'
+                />
+              </div>
+              <div className='flex items-center gap-2 text-sm text-slate-400'>
+                <span>Show</span>
+                <select
+                  value={topBetsPerPage}
+                  onChange={(e) => setTopBetsPerPage(Number(e.target.value))}
+                  className='rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-200 focus:border-emerald-500 focus:outline-none'
+                >
+                  {[5, 10, 20, 50].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <span>per page</span>
+              </div>
+            </div>
+            <div className='overflow-x-auto rounded-lg border border-slate-700'>
+              <table className='w-full min-w-[640px] text-sm table-fixed'>
+                <thead>
+                  <tr className='border-b border-slate-700 bg-slate-800/70 text-slate-400'>
+                    <th className='px-3 py-2 text-left font-medium'>Match</th>
+                    <th className='w-36 min-w-[140px] px-3 py-2 text-center font-medium'>Bet</th>
+                    <th className='px-3 py-2 text-center font-medium'>Market</th>
+                    <th className='px-3 py-2 text-center font-medium'>Odds</th>
+                    <th className='px-3 py-2 text-center font-medium'>Confidence</th>
+                    <th className='px-3 py-2 text-center font-medium'>EV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleMoreBets.map((bet) => (
+                    <tr
+                      key={`${bet.fixture_id}-${bet.market}-${bet.outcome}`}
+                      className='border-b border-slate-700/50 last:border-b-0'
+                    >
+                      <td className='px-3 py-2'>
+                        <span className='font-medium text-slate-200'>{bet.home_team} vs {bet.away_team}</span>
+                        {bet.tournament_name && (
+                          <p className='text-xs text-slate-500'>{bet.tournament_name}</p>
+                        )}
+                      </td>
+                      <td className='w-36 min-w-[140px] px-3 py-2 text-center font-medium text-slate-100 whitespace-nowrap'>
+                        {(bet.outcome_display ?? bet.outcome)} @ {bet.odds.toFixed(2)}
+                      </td>
+                      <td className='px-3 py-2 text-center text-slate-400'>{bet.market_display ?? bet.market}</td>
+                      <td className='px-3 py-2 text-center font-mono text-slate-200'>{bet.odds.toFixed(2)}</td>
+                      <td className={`px-3 py-2 text-center font-medium ${getConfidenceColor(bet.probability)}`}>
+                        {(bet.probability * 100).toFixed(1)}%
+                      </td>
+                      <td className='px-3 py-2 text-center'>
+                        <Tooltip text={EV_TOOLTIP}>
+                          <span className={`cursor-help font-medium ${getEVColor(bet.expected_value)}`}>
+                            {(bet.expected_value * 100).toFixed(1)}%
+                          </span>
+                        </Tooltip>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className='mt-3 flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-sm text-slate-500'>
+                {filteredMoreBets.length} result{filteredMoreBets.length !== 1 ? 's' : ''}
+                {topBetsSearch.trim() ? ` (filtered)` : ''}
+              </p>
+              <div className='flex items-center gap-2'>
+                <span className='text-sm text-slate-400'>
+                  Page {topBetsPageClamped} of {topBetsTotalPages}
+                </span>
+                <button
+                  type='button'
+                  onClick={() => setTopBetsPage((p) => Math.max(1, p - 1))}
+                  disabled={topBetsPageClamped <= 1}
+                  className='rounded border border-slate-600 bg-slate-800 p-1.5 text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                  aria-label='Previous page'
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type='button'
+                  onClick={() => setTopBetsPage((p) => Math.min(topBetsTotalPages, p + 1))}
+                  disabled={topBetsPageClamped >= topBetsTotalPages}
+                  className='rounded border border-slate-600 bg-slate-800 p-1.5 text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                  aria-label='Next page'
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -811,7 +951,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
                   const result = bet.result ?? 'pending';
                   let resultDisplay: string;
                   let resultClassName: string;
-                  
+
                   if (result === 'pending') {
                     resultDisplay = 'Pending';
                     resultClassName = 'text-white';
@@ -824,7 +964,7 @@ export function BettingTab({ api, bankroll }: BettingTabProps) {
                     resultDisplay = `-$${bet.stake?.toFixed(2) ?? '0.00'}`;
                     resultClassName = 'text-red-400';
                   }
-                  
+
                   return (
                     <tr
                       key={i}

@@ -19,7 +19,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config
-from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -497,6 +497,96 @@ async def export_bets(
     return JSONResponse(content={"bets": bets})
 
 
+# Display mapping for top-confidence API: raw outcome/market from bookmaker -> human-readable
+OUTCOME_DISPLAY_1X2 = {"1": "Home", "X": "Draw", "2": "Away"}
+
+MARKET_DISPLAY_NAMES = {
+    "Resultado Final": "1X2",
+    "Match Result": "1X2",
+    "Full Time Result": "1X2",
+    "Over/Under": "O/U",
+    "Both Teams To Score": "BTTS",
+}
+
+
+def _outcome_display(outcome: str) -> str:
+    """Return human-readable outcome label; 1x2 codes mapped, others kept as-is."""
+    return OUTCOME_DISPLAY_1X2.get(outcome, outcome) if outcome else outcome
+
+
+def _market_display(market_name: str) -> str:
+    """Return canonical display name for market; unknown names kept as-is."""
+    return MARKET_DISPLAY_NAMES.get(market_name, market_name) if market_name else market_name
+
+
+def _get_top_confidence_bet_sync(sort_by: str, limit: int) -> Dict[str, Any]:
+    """
+    Synchronous implementation of top-confidence bet logic.
+    Run in a thread pool so the event loop is not blocked (heavy model + value_bet work).
+    """
+    db = get_db()
+    version_manager = get_versioning()
+    markets = ['1x2', 'over_under', 'btts']
+    today = datetime.now().strftime('%Y-%m-%d')
+    to_date_end = f"{today}T23:59:59Z"
+    fixtures = db.get_fixtures(from_date=today, to_date=to_date_end)
+    if len(fixtures) == 0:
+        return {"bets": [], "count": 0, "message": "No fixtures found for today"}
+    all_value_bets = []
+    for market in markets:
+        try:
+            active_version = version_manager.get_active_version(domain='betting', market=market)
+            if not active_version:
+                continue
+            model_path = active_version.get('model_path')
+            if not model_path or not Path(model_path).exists():
+                continue
+            predictor = BettingPredictor(market=market)
+            predictor.load(model_path)
+            if not predictor.is_trained:
+                continue
+            engine = ValueBetEngine(predictor, db, ev_threshold=0.0)
+            fixture_ids = fixtures['fixture_id'].tolist()
+            value_bets = engine.find_value_bets(fixture_ids=fixture_ids, market=market)
+            if len(value_bets) > 0:
+                all_value_bets.append(value_bets)
+        except Exception:
+            continue
+    if len(all_value_bets) == 0:
+        return {"bets": [], "count": 0, "message": "No value bets found for today"}
+    combined_bets = pd.concat(all_value_bets, ignore_index=True) if len(all_value_bets) > 0 else pd.DataFrame()
+    if len(combined_bets) == 0:
+        return {"bets": [], "count": 0, "message": "No value bets found for today"}
+    if sort_by == "ev":
+        combined_bets = combined_bets.sort_values(['expected_value', 'probability'], ascending=[False, False])
+    else:
+        combined_bets = combined_bets.sort_values(['probability', 'expected_value'], ascending=[False, False])
+    top_bets = combined_bets.head(limit)
+    bets = []
+    fixtures_dict = {row['fixture_id']: row for _, row in fixtures.iterrows()}
+    for _, bet_row in top_bets.iterrows():
+        fixture_id = bet_row.get('fixture_id', '')
+        fixture_info = fixtures_dict.get(fixture_id, {})
+        outcome_raw = bet_row.get('outcome', '')
+        market_raw = bet_row.get('market', '')
+        bets.append({
+            "fixture_id": fixture_id,
+            "home_team": bet_row.get('home_team', ''),
+            "away_team": bet_row.get('away_team', ''),
+            "start_time": bet_row.get('start_time', ''),
+            "market": market_raw,
+            "market_display": _market_display(market_raw),
+            "outcome": outcome_raw,
+            "outcome_display": _outcome_display(outcome_raw),
+            "odds": float(bet_row.get('odds', 0)),
+            "probability": float(bet_row.get('probability', 0)),
+            "expected_value": float(bet_row.get('expected_value', 0)),
+            "bookmaker": bet_row.get('bookmaker', ''),
+            "tournament_name": fixture_info.get('tournament_name', '')
+        })
+    return {"bets": bets, "count": len(bets), "sort_by": sort_by}
+
+
 @app.get("/api/bets/top-confidence")
 async def get_top_confidence_bet(
     sort_by: str = Query(default="confidence", pattern="^(confidence|ev)$", description="Sort by 'confidence' (probability) or 'ev' (expected value)"),
@@ -504,115 +594,10 @@ async def get_top_confidence_bet(
 ) -> Dict[str, Any]:
     """
     Get the most confident bet(s) for today.
-    
-    Queries fixtures for today's date, finds value bets across all active models,
-    and returns the top bet(s) sorted by confidence (probability) or expected value.
+    Runs heavy work (model load, value_bet) in a thread pool so the event loop stays responsive.
     """
-    db = get_db()
-    version_manager = get_versioning()
-    markets = ['1x2', 'over_under', 'btts']
-    
-    # Get today's date
-    today = datetime.now().strftime('%Y-%m-%d')
-    
-    # Get fixtures for today
-    fixtures = db.get_fixtures(from_date=today, to_date=today)
-    
-    if len(fixtures) == 0:
-        return {
-            "bets": [],
-            "count": 0,
-            "message": "No fixtures found for today"
-        }
-    
-    all_value_bets = []
-    
-    # Process each market
-    for market in markets:
-        try:
-            # Get active model version
-            active_version = version_manager.get_active_version(domain='betting', market=market)
-            if not active_version:
-                continue
-            
-            model_path = active_version.get('model_path')
-            if not model_path or not Path(model_path).exists():
-                continue
-            
-            # Load model
-            predictor = BettingPredictor(market=market)
-            predictor.load(model_path)
-            
-            if not predictor.is_trained:
-                continue
-            
-            # Create value bet engine
-            engine = ValueBetEngine(predictor, db, ev_threshold=0.0)  # Use 0 threshold to get all bets
-            
-            # Find value bets for today's fixtures
-            fixture_ids = fixtures['fixture_id'].tolist()
-            value_bets = engine.find_value_bets(fixture_ids=fixture_ids, market=market)
-            
-            if len(value_bets) > 0:
-                all_value_bets.append(value_bets)
-        
-        except Exception as e:
-            # Log error but continue with other markets
-            continue
-    
-    if len(all_value_bets) == 0:
-        return {
-            "bets": [],
-            "count": 0,
-            "message": "No value bets found for today"
-        }
-    
-    # Combine all value bets
-    combined_bets = pd.concat(all_value_bets, ignore_index=True) if len(all_value_bets) > 0 else pd.DataFrame()
-    
-    if len(combined_bets) == 0:
-        return {
-            "bets": [],
-            "count": 0,
-            "message": "No value bets found for today"
-        }
-    
-    # Sort by specified criteria
-    if sort_by == "ev":
-        combined_bets = combined_bets.sort_values('expected_value', ascending=False)
-    else:  # default to confidence (probability)
-        combined_bets = combined_bets.sort_values('probability', ascending=False)
-    
-    # Get top N bets
-    top_bets = combined_bets.head(limit)
-    
-    # Convert to list of dicts and enrich with tournament_name from fixtures
-    bets = []
-    fixtures_dict = {row['fixture_id']: row for _, row in fixtures.iterrows()}
-    
-    for _, bet_row in top_bets.iterrows():
-        fixture_id = bet_row.get('fixture_id', '')
-        fixture_info = fixtures_dict.get(fixture_id, {})
-        
-        bets.append({
-            "fixture_id": fixture_id,
-            "home_team": bet_row.get('home_team', ''),
-            "away_team": bet_row.get('away_team', ''),
-            "start_time": bet_row.get('start_time', ''),
-            "market": bet_row.get('market', ''),
-            "outcome": bet_row.get('outcome', ''),
-            "odds": float(bet_row.get('odds', 0)),
-            "probability": float(bet_row.get('probability', 0)),
-            "expected_value": float(bet_row.get('expected_value', 0)),
-            "bookmaker": bet_row.get('bookmaker', ''),
-            "tournament_name": fixture_info.get('tournament_name', '')
-        })
-    
-    return {
-        "bets": bets,
-        "count": len(bets),
-        "sort_by": sort_by
-    }
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _get_top_confidence_bet_sync(sort_by, limit))
 
 
 # =============================================================================
@@ -734,26 +719,37 @@ async def trigger_automation(request: TriggerRequest) -> Dict[str, Any]:
 
 @app.post("/api/automation/stop")
 async def stop_automation() -> Dict[str, Any]:
-    """Stop running automation tasks (either daemon or current task)."""
+    """Stop running betting automation tasks (either daemon or current task)."""
     scheduler = get_scheduler()
     status = scheduler.get_status()
     
-    # If a task is currently running, stop it
-    if status.get("current_task"):
-        result = scheduler.stop_task()
-        return result
+    # Check if a betting task is running (betting tasks don't start with "trading_")
+    current_task = status.get("current_task", "")
+    is_betting_task = current_task and not current_task.startswith("trading_")
+    is_daemon_running = status.get("running", False)
     
-    # Otherwise, try to stop daemon mode
-    if status.get("running"):
-        scheduler.stop_daemon()
+    # Nothing to stop
+    if not is_betting_task and not is_daemon_running:
         return {
-            "success": True,
-            "message": "Stop signal sent to daemon"
+            "success": False,
+            "message": "No betting task or daemon is currently running"
         }
     
+    messages = []
+    
+    # Stop daemon if running (this also signals the task to stop)
+    if is_daemon_running:
+        scheduler.stop_daemon()
+        messages.append("Daemon stop signal sent")
+    
+    # Also explicitly stop task if running (belt and suspenders)
+    if is_betting_task:
+        scheduler.stop_task()
+        messages.append(f"Task '{current_task}' stop signal sent")
+    
     return {
-        "success": False,
-        "message": "No task or daemon is currently running"
+        "success": True,
+        "message": "; ".join(messages) if messages else "Stop signal sent"
     }
 
 
@@ -909,8 +905,7 @@ async def stop_trading_daemon() -> Dict[str, Any]:
     
     # If a trading task is currently running, stop it
     current_task = status.get("current_task", "")
-    is_trading_task = current_task and ("trading" in current_task.lower() or 
-                                        current_task in ["trading_collection", "trading_training", "trading_cycle", "trading_full_run"])
+    is_trading_task = current_task and current_task.startswith("trading_")
     
     if is_trading_task:
         result = scheduler.stop_task()
@@ -1305,6 +1300,48 @@ async def reset_database(preserve_models: bool = True) -> Dict[str, Any]:
     try:
         db = get_db()
         result = db.reset_database(preserve_models=preserve_models)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ResetBettingBody(BaseModel):
+    preserve_models: bool = True
+
+
+@app.post("/api/database/reset/betting")
+async def reset_betting_domain(body: ResetBettingBody = Body(default_factory=lambda: ResetBettingBody())) -> Dict[str, Any]:
+    """
+    Reset only betting domain: fixtures, odds, scores, bets, ingestion_metadata, metrics.
+    Trading data (stocks, portfolio, trades, etc.) is preserved.
+    """
+    try:
+        db = get_db()
+        preserve = body.preserve_models
+        result = db.reset_betting_domain(preserve_models=preserve)
+        global _db, _scheduler, _bankroll, _metrics, _versioning
+        _db = None
+        _scheduler = None
+        _bankroll = None
+        _metrics = None
+        _versioning = None
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/database/reset/trading")
+async def reset_trading_domain() -> Dict[str, Any]:
+    """
+    Reset only trading domain: stocks, crypto, price_history, indicators, trades, positions, portfolio.
+    Betting data is preserved.
+    """
+    try:
+        db = get_db()
+        result = db.reset_trading_domain()
+        global _db, _scheduler
+        _db = None
+        _scheduler = None
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1970,9 +2007,107 @@ if frontend_dir.exists():
 def main():
     """Run the dashboard server."""
     import uvicorn
-    print("Starting Arbihawk Dashboard...")
-    print("Open http://localhost:8000 in your browser")
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    import socket
+    import sys
+    import platform
+    import subprocess
+    
+    def is_port_in_use(port: int) -> bool:
+        """Check if a port is already in use."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('0.0.0.0', port))
+                return False
+            except OSError:
+                return True
+    
+    def kill_process_on_port(port: int) -> bool:
+        """Try to kill the process using the specified port. Returns True if successful."""
+        try:
+            if platform.system() == "Windows":
+                # Use netstat to find the process using the port
+                result = subprocess.run(
+                    ['netstat', '-ano'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                for line in result.stdout.split('\n'):
+                    if f':{port}' in line and 'LISTENING' in line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            try:
+                                # Try to kill the process
+                                subprocess.run(
+                                    ['taskkill', '/F', '/PID', pid],
+                                    capture_output=True,
+                                    timeout=5
+                                )
+                                print(f"Killed existing process (PID {pid}) on port {port}")
+                                # Wait a moment for the port to be released
+                                import time
+                                time.sleep(1)
+                                return True
+                            except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+                                pass
+            else:
+                # Linux/Mac: use lsof
+                result = subprocess.run(
+                    ['lsof', '-ti', f':{port}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    pid = result.stdout.strip().split('\n')[0]
+                    try:
+                        subprocess.run(['kill', '-9', pid], timeout=5)
+                        print(f"Killed existing process (PID {pid}) on port {port}")
+                        import time
+                        time.sleep(1)
+                        return True
+                    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+                        pass
+        except Exception:
+            pass
+        return False
+    
+    def find_available_port(start_port: int = 8000, max_attempts: int = 10) -> int:
+        """Find an available port starting from start_port."""
+        for port in range(start_port, start_port + max_attempts):
+            if not is_port_in_use(port):
+                return port
+        raise RuntimeError(f"Could not find an available port in range {start_port}-{start_port + max_attempts - 1}")
+    
+    # Check if default port is available
+    default_port = 8000
+    if is_port_in_use(default_port):
+        print(f"Port {default_port} is already in use.")
+        print("Attempting to free the port by killing the existing process...")
+        
+        # Try to kill the existing process
+        if kill_process_on_port(default_port):
+            # Check again if port is now available
+            if not is_port_in_use(default_port):
+                port = default_port
+                print(f"Port {default_port} is now available.")
+            else:
+                print("Port still in use after kill attempt, finding alternative port...")
+                port = find_available_port(default_port)
+                print(f"Using alternative port: {port}")
+        else:
+            print("Could not kill existing process, finding alternative port...")
+            port = find_available_port(default_port)
+            print(f"Using alternative port: {port}")
+        
+        print(f"Open http://localhost:{port} in your browser")
+    else:
+        port = default_port
+        print("Starting Arbihawk Dashboard...")
+        print(f"Open http://localhost:{port} in your browser")
+    
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

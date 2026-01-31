@@ -135,8 +135,8 @@ export const createApi = (
       backup_path: string;
       records_deleted: Record<string, number>;
       total_deleted: number;
-      preserved_models: boolean;
-      model_versions_kept: number;
+      preserved_models?: boolean;
+      model_versions_kept?: number;
     }> =>
       fetch('/api/database/reset', {
         method: 'POST',
@@ -148,10 +148,36 @@ export const createApi = (
           backup_path: string;
           records_deleted: Record<string, number>;
           total_deleted: number;
-          preserved_models: boolean;
-          model_versions_kept: number;
+          preserved_models?: boolean;
+          model_versions_kept?: number;
         }>)
         .catch((err) => handleError(err, 'Failed to reset database')),
+
+    resetBettingDomain: (preserveModels = true): Promise<{
+      success: boolean;
+      domain: string;
+      backup_path: string;
+      records_deleted: Record<string, number>;
+      total_deleted: number;
+    }> =>
+      fetch('/api/database/reset/betting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preserve_models: preserveModels }),
+      })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to reset betting domain')),
+
+    resetTradingDomain: (): Promise<{
+      success: boolean;
+      domain: string;
+      backup_path: string;
+      records_deleted: Record<string, number>;
+      total_deleted: number;
+    }> =>
+      fetch('/api/database/reset/trading', { method: 'POST' })
+        .then(handleResponse)
+        .catch((err) => handleError(err, 'Failed to reset trading domain')),
 
     triggerAutomation: (params: TriggerAutomationParams | string): Promise<unknown> => {
       // Support both old (string) and new (object) API for backwards compatibility

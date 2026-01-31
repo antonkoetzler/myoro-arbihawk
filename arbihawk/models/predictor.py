@@ -389,6 +389,9 @@ class BettingPredictor(BasePredictor):
             self.cv_std = 0.0
             self.cv_folds = 0
         
+        # Mark trained before betting evaluation so evaluator.evaluate() can call predict_probabilities
+        self.is_trained = True
+        
         # Evaluate on betting metrics if validation set available
         if use_betting_eval and len(X_val) > 0 and len(y_val) > 0:
             try:
@@ -426,8 +429,6 @@ class BettingPredictor(BasePredictor):
                 self.betting_metrics = {}
         else:
             self.betting_metrics = {}
-        
-        self.is_trained = True
     
     def predict_probabilities(self, features: pd.DataFrame) -> pd.DataFrame:
         """

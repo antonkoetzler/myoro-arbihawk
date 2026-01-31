@@ -4,6 +4,7 @@ Feature engineering for match data.
 Optimized implementation using data caching to avoid redundant database queries.
 """
 
+import hashlib
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional, Callable, Tuple
@@ -75,16 +76,59 @@ class FeatureEngineer:
         self._team_match_index = None
         self._odds_by_fixture = None
     
+    STRENGTH_WINDOW = 20
+    STRONG_PPG_THRESHOLD = 1.5  # Opponent points-per-game >= this = "strong"
+    DEFAULT_AVG_TOTAL_GOALS_5 = 2.5
+    DEFAULT_OVER25_RATE_5 = 0.5
+    DEFAULT_BTTS_RATE_5 = 0.5
+
+    def _form_defaults_with_market(self) -> Dict[str, float]:
+        """Default form dict including market-specific keys."""
+        return {
+            'win_rate': self.DEFAULT_WIN_RATE,
+            'avg_goals_scored': self.DEFAULT_AVG_GOALS,
+            'avg_goals_conceded': self.DEFAULT_AVG_GOALS,
+            'form_points': self.DEFAULT_FORM_POINTS,
+            'form_momentum': 0.0,
+            'form_vs_strong_ppg': 1.0,
+            'form_vs_weak_ppg': 1.0,
+            'avg_total_goals_5': self.DEFAULT_AVG_TOTAL_GOALS_5,
+            'over25_rate_5': self.DEFAULT_OVER25_RATE_5,
+            'btts_rate_5': self.DEFAULT_BTTS_RATE_5,
+        }
+
+    def _get_team_strength(self, team_id: str, before_date: str, window: int = 20) -> float:
+        """Points per game over last `window` matches (proxy for team strength). Default 1.0."""
+        completed = self._completed_cache
+        if completed is None or len(completed) == 0:
+            return 1.0
+        if self._team_match_index is not None and team_id not in self._team_match_index:
+            self._team_match_index[team_id] = completed[
+                (completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)
+            ]
+        if self._team_match_index is not None and team_id in self._team_match_index:
+            team_data = self._team_match_index[team_id]
+            team_matches = team_data[team_data['start_time'] < before_date].tail(window)
+        else:
+            mask = ((completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)) & \
+                   (completed['start_time'] < before_date)
+            team_matches = completed.loc[mask].tail(window)
+        n = len(team_matches)
+        if n == 0:
+            return 1.0
+        is_home = (team_matches['home_team_id'] == team_id).values
+        home_scores = team_matches['home_score'].fillna(0).values.astype(int)
+        away_scores = team_matches['away_score'].fillna(0).values.astype(int)
+        team_scores = np.where(is_home, home_scores, away_scores)
+        opp_scores = np.where(is_home, away_scores, home_scores)
+        points = np.sum(np.where(team_scores > opp_scores, 3, np.where(team_scores == opp_scores, 1, 0)))
+        return float(points) / n
+
     def _get_team_form_from_cache(self, team_id: str, before_date: str, matches: int = 5) -> Dict[str, float]:
         """Get team form using cached data (vectorized with lazy-indexed lookups)."""
         completed = self._completed_cache
         if completed is None or len(completed) == 0:
-            return {
-                'win_rate': self.DEFAULT_WIN_RATE,
-                'avg_goals_scored': self.DEFAULT_AVG_GOALS,
-                'avg_goals_conceded': self.DEFAULT_AVG_GOALS,
-                'form_points': self.DEFAULT_FORM_POINTS
-            }
+            return self._form_defaults_with_market()
         
         # Build team index lazily on first access
         if self._team_match_index is not None and team_id not in self._team_match_index:
@@ -103,12 +147,7 @@ class FeatureEngineer:
         
         n = len(team_matches)
         if n == 0:
-            return {
-                'win_rate': self.DEFAULT_WIN_RATE,
-                'avg_goals_scored': self.DEFAULT_AVG_GOALS,
-                'avg_goals_conceded': self.DEFAULT_AVG_GOALS,
-                'form_points': self.DEFAULT_FORM_POINTS
-            }
+            return self._form_defaults_with_market()
         
         # Vectorized calculations
         is_home = (team_matches['home_team_id'] == team_id).values
@@ -123,12 +162,49 @@ class FeatureEngineer:
         goals_scored = np.sum(team_scores)
         goals_conceded = np.sum(opp_scores)
         points = wins * 3 + draws
+
+        # Form momentum: recent trend (last 2 vs previous 3 matches)
+        form_momentum = 0.0
+        if n >= 3:
+            pts_per_match = np.where(team_scores > opp_scores, 3, np.where(team_scores == opp_scores, 1, 0))
+            recent_pts = np.mean(pts_per_match[-2:])
+            older_pts = np.mean(pts_per_match[:-2])
+            form_momentum = float(recent_pts - older_pts)
+
+        # Opponent strength: form vs strong (ppg >= 1.5) vs weak opponents
+        form_vs_strong_ppg = 1.0
+        form_vs_weak_ppg = 1.0
+        pts_per_match = np.where(team_scores > opp_scores, 3, np.where(team_scores == opp_scores, 1, 0))
+        opponent_ids = np.where(is_home, team_matches['away_team_id'].values, team_matches['home_team_id'].values)
+        match_times = team_matches['start_time'].values
+        strengths = np.array([
+            self._get_team_strength(opponent_ids[i], match_times[i], self.STRENGTH_WINDOW)
+            for i in range(n)
+        ])
+        strong_mask = strengths >= self.STRONG_PPG_THRESHOLD
+        weak_mask = ~strong_mask
+        if np.any(strong_mask):
+            form_vs_strong_ppg = float(np.mean(pts_per_match[strong_mask]))
+        if np.any(weak_mask):
+            form_vs_weak_ppg = float(np.mean(pts_per_match[weak_mask]))
+
+        # Market-specific (O/U, BTTS): last 5 matches
+        total_goals_per_match = home_scores + away_scores
+        avg_total_goals_5 = float(np.mean(total_goals_per_match))
+        over25_rate_5 = float(np.mean((total_goals_per_match > 2.5).astype(np.float64)))
+        btts_rate_5 = float(np.mean(((home_scores > 0) & (away_scores > 0)).astype(np.float64)))
         
         return {
             'win_rate': wins / n,
             'avg_goals_scored': goals_scored / n,
             'avg_goals_conceded': goals_conceded / n,
-            'form_points': points / n
+            'form_points': points / n,
+            'form_momentum': form_momentum,
+            'form_vs_strong_ppg': form_vs_strong_ppg,
+            'form_vs_weak_ppg': form_vs_weak_ppg,
+            'avg_total_goals_5': avg_total_goals_5,
+            'over25_rate_5': over25_rate_5,
+            'btts_rate_5': btts_rate_5,
         }
     
     def _get_h2h_from_cache(self, home_team_id: str, away_team_id: str, before_date: str) -> Dict[str, float]:
@@ -420,6 +496,34 @@ class FeatureEngineer:
                 'time_period': 1.0
             }
     
+    TOURNAMENT_STAGE_KEYWORDS = ('playoff', 'cup', 'knockout', 'semifinal', 'final')
+    TOURNAMENT_FINAL_KEYWORDS = ('final',)
+
+    def _get_tournament_context(self, tournament_name: Optional[str], tournament_id: Optional[Any]) -> Dict[str, float]:
+        """
+        Extract tournament context from name and id.
+        
+        Returns:
+            - is_playoff_or_cup: 1 if name suggests cup/playoff/knockout (else 0)
+            - is_final: 1 if name suggests final (else 0)
+            - tournament_id_numeric: tournament_id if valid, else stable hash of name for pattern recognition
+        """
+        name = (tournament_name or '').strip().lower()
+        is_playoff_or_cup = 1.0 if any(kw in name for kw in self.TOURNAMENT_STAGE_KEYWORDS) else 0.0
+        is_final = 1.0 if any(kw in name for kw in self.TOURNAMENT_FINAL_KEYWORDS) else 0.0
+        if tournament_id is not None and not (isinstance(tournament_id, float) and np.isnan(tournament_id)):
+            try:
+                tournament_id_numeric = float(int(tournament_id))
+            except (TypeError, ValueError):
+                tournament_id_numeric = float(int(hashlib.md5(name.encode()).hexdigest()[:8], 16) % (2**20))
+        else:
+            tournament_id_numeric = float(int(hashlib.md5(name.encode()).hexdigest()[:8], 16) % (2**20)) if name else 0.0
+        return {
+            'is_playoff_or_cup': is_playoff_or_cup,
+            'is_final': is_final,
+            'tournament_id_numeric': tournament_id_numeric
+        }
+
     def create_features(self, fixture_id: str) -> pd.Series:
         """
         Create feature vector for a single fixture.
@@ -465,6 +569,10 @@ class FeatureEngineer:
         temporal_feat = self._get_temporal_features(start_time)
         home_rest_days = self._get_rest_days(home_team_id, start_time)
         away_rest_days = self._get_rest_days(away_team_id, start_time)
+        tournament_ctx = self._get_tournament_context(
+            fixture.get('tournament_name'),
+            fixture.get('tournament_id')
+        )
         
         # Combine all features
         features = {
@@ -472,10 +580,22 @@ class FeatureEngineer:
             'home_avg_goals_scored': home_form['avg_goals_scored'],
             'home_avg_goals_conceded': home_form['avg_goals_conceded'],
             'home_form_points': home_form['form_points'],
+            'home_form_momentum': home_form['form_momentum'],
+            'home_form_vs_strong_ppg': home_form['form_vs_strong_ppg'],
+            'home_form_vs_weak_ppg': home_form['form_vs_weak_ppg'],
+            'home_avg_total_goals_5': home_form['avg_total_goals_5'],
+            'home_over25_rate_5': home_form['over25_rate_5'],
+            'home_btts_rate_5': home_form['btts_rate_5'],
             'away_win_rate': away_form['win_rate'],
             'away_avg_goals_scored': away_form['avg_goals_scored'],
             'away_avg_goals_conceded': away_form['avg_goals_conceded'],
             'away_form_points': away_form['form_points'],
+            'away_form_momentum': away_form['form_momentum'],
+            'away_form_vs_strong_ppg': away_form['form_vs_strong_ppg'],
+            'away_form_vs_weak_ppg': away_form['form_vs_weak_ppg'],
+            'away_avg_total_goals_5': away_form['avg_total_goals_5'],
+            'away_over25_rate_5': away_form['over25_rate_5'],
+            'away_btts_rate_5': away_form['btts_rate_5'],
             'h2h_home_wins': h2h['home_wins'],
             'h2h_draws': h2h['draws'],
             'h2h_away_wins': h2h['away_wins'],
@@ -494,7 +614,10 @@ class FeatureEngineer:
             'is_weekend': temporal_feat['is_weekend'],
             'time_period': temporal_feat['time_period'],
             'home_rest_days': home_rest_days,
-            'away_rest_days': away_rest_days
+            'away_rest_days': away_rest_days,
+            'is_playoff_or_cup': tournament_ctx['is_playoff_or_cup'],
+            'is_final': tournament_ctx['is_final'],
+            'tournament_id_numeric': tournament_ctx['tournament_id_numeric']
         }
         
         return pd.Series(features)

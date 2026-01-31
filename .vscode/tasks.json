@@ -219,6 +219,7 @@
       "options": {
         "cwd": "${workspaceFolder}/arbihawk"
       },
+      "dependsOn": "Setup: Install Dependencies",
       "isBackground": true,
       "problemMatcher": []
     },
@@ -240,6 +241,7 @@
       "options": {
         "cwd": "${workspaceFolder}/arbihawk"
       },
+      "dependsOn": "Setup: Install Dependencies",
       "isBackground": true,
       "problemMatcher": []
     },

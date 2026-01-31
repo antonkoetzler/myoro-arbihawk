@@ -115,9 +115,12 @@ class TestStockFeatureEngineer:
         df = engineer.compute_indicators(sample_price_data)
         df = engineer.compute_momentum_features(df)
         
-        expected_cols = ['return_1d', 'return_5d', 'return_20d', 'volatility_20d']
+        expected_cols = ['return_1d', 'return_5d', 'return_20d', 'volatility_20d',
+                         'momentum_trend_5d', 'momentum_trend_20d']
         for col in expected_cols:
             assert col in df.columns, f"Missing column: {col}"
+        assert np.issubdtype(df['momentum_trend_5d'].dtype, np.floating)
+        assert np.issubdtype(df['momentum_trend_20d'].dtype, np.floating)
     
     def test_compute_swing_features(self, engineer, sample_price_data):
         """Test swing feature computation."""
@@ -157,6 +160,9 @@ class TestStockFeatureEngineer:
         assert len(momentum_cols) > 0
         assert len(swing_cols) > 0
         assert len(volatility_cols) > 0
+        assert 'momentum_trend_5d' in momentum_cols
+        assert 'momentum_trend_20d' in momentum_cols
+        assert 'momentum_trend_5d' in volatility_cols
         # Volatility should have more features (includes momentum + volatility specific)
         assert len(volatility_cols) >= len(momentum_cols)
     

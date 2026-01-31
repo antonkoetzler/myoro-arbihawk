@@ -184,10 +184,46 @@ class BetSettlement:
         
         bet = bet.iloc[0]
         
-        # Get score
+        # Get score (by fixture_id first)
         scores = self.db.get_scores(fixture_id)
         if len(scores) == 0:
-            return None
+            # Fallback: find score by teams+date (synthetic ID)
+            fixture = self.db.get_fixture_by_id(fixture_id)
+            if fixture is None:
+                return None
+            score_row = self.db.find_score_by_teams_and_date(
+                home_team=fixture.get("home_team_name") or "",
+                away_team=fixture.get("away_team_name") or "",
+                start_time=fixture.get("start_time"),
+            )
+            if score_row is None:
+                return None
+            home_score = score_row.get("home_score")
+            away_score = score_row.get("away_score")
+            if home_score is None or away_score is None:
+                return None
+            won = self.evaluate_bet(
+                home_score=home_score,
+                away_score=away_score,
+                market_name=bet.get("market_name", ""),
+                outcome_name=bet.get("outcome_name", ""),
+            )
+            if won is None:
+                return None
+            stake = bet["stake"]
+            odds = bet["odds"]
+            result = "win" if won else "loss"
+            payout = stake * odds if won else 0
+            self.db.settle_bet(bet_id, result, payout)
+            return {
+                "bet_id": bet_id,
+                "fixture_id": fixture_id,
+                "result": result,
+                "stake": stake,
+                "odds": odds,
+                "payout": payout,
+                "profit": payout - stake,
+            }
         
         score = scores.iloc[0]
         home_score = score.get('home_score')
