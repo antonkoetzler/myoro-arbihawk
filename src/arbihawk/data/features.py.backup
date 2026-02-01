@@ -97,26 +97,26 @@ class FeatureEngineer:
             'btts_rate_5': self.DEFAULT_BTTS_RATE_5,
         }
 
-    def _get_team_strength(self, team_name: str, before_date: str, window: int = 20) -> float:
+    def _get_team_strength(self, team_id: str, before_date: str, window: int = 20) -> float:
         """Points per game over last `window` matches (proxy for team strength). Default 1.0."""
         completed = self._completed_cache
         if completed is None or len(completed) == 0:
             return 1.0
-        if self._team_match_index is not None and team_name not in self._team_match_index:
-            self._team_match_index[team_name] = completed[
-                (completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)
+        if self._team_match_index is not None and team_id not in self._team_match_index:
+            self._team_match_index[team_id] = completed[
+                (completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)
             ]
-        if self._team_match_index is not None and team_name in self._team_match_index:
-            team_data = self._team_match_index[team_name]
+        if self._team_match_index is not None and team_id in self._team_match_index:
+            team_data = self._team_match_index[team_id]
             team_matches = team_data[team_data['start_time'] < before_date].tail(window)
         else:
-            mask = ((completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)) & \
+            mask = ((completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)) & \
                    (completed['start_time'] < before_date)
             team_matches = completed.loc[mask].tail(window)
         n = len(team_matches)
         if n == 0:
             return 1.0
-        is_home = (team_matches['home_team_name'] == team_name).values
+        is_home = (team_matches['home_team_id'] == team_id).values
         home_scores = team_matches['home_score'].fillna(0).values.astype(int)
         away_scores = team_matches['away_score'].fillna(0).values.astype(int)
         team_scores = np.where(is_home, home_scores, away_scores)
@@ -124,24 +124,24 @@ class FeatureEngineer:
         points = np.sum(np.where(team_scores > opp_scores, 3, np.where(team_scores == opp_scores, 1, 0)))
         return float(points) / n
 
-    def _get_team_form_from_cache(self, team_name: str, before_date: str, matches: int = 5) -> Dict[str, float]:
+    def _get_team_form_from_cache(self, team_id: str, before_date: str, matches: int = 5) -> Dict[str, float]:
         """Get team form using cached data (vectorized with lazy-indexed lookups)."""
         completed = self._completed_cache
         if completed is None or len(completed) == 0:
             return self._form_defaults_with_market()
         
         # Build team index lazily on first access
-        if self._team_match_index is not None and team_name not in self._team_match_index:
-            self._team_match_index[team_name] = completed[
-                (completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)
+        if self._team_match_index is not None and team_id not in self._team_match_index:
+            self._team_match_index[team_id] = completed[
+                (completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)
             ]
         
         # Use pre-computed team index
-        if self._team_match_index is not None and team_name in self._team_match_index:
-            team_data = self._team_match_index[team_name]
+        if self._team_match_index is not None and team_id in self._team_match_index:
+            team_data = self._team_match_index[team_id]
             team_matches = team_data[team_data['start_time'] < before_date].tail(matches)
         else:
-            mask = ((completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)) & \
+            mask = ((completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)) & \
                    (completed['start_time'] < before_date)
             team_matches = completed.loc[mask].tail(matches)
         
@@ -150,7 +150,7 @@ class FeatureEngineer:
             return self._form_defaults_with_market()
         
         # Vectorized calculations
-        is_home = (team_matches['home_team_name'] == team_name).values
+        is_home = (team_matches['home_team_id'] == team_id).values
         home_scores = team_matches['home_score'].fillna(0).values.astype(int)
         away_scores = team_matches['away_score'].fillna(0).values.astype(int)
         
@@ -175,10 +175,10 @@ class FeatureEngineer:
         form_vs_strong_ppg = 1.0
         form_vs_weak_ppg = 1.0
         pts_per_match = np.where(team_scores > opp_scores, 3, np.where(team_scores == opp_scores, 1, 0))
-        opponent_names = np.where(is_home, team_matches['away_team_name'].values, team_matches['home_team_name'].values)
+        opponent_ids = np.where(is_home, team_matches['away_team_id'].values, team_matches['home_team_id'].values)
         match_times = team_matches['start_time'].values
         strengths = np.array([
-            self._get_team_strength(opponent_names[i], match_times[i], self.STRENGTH_WINDOW)
+            self._get_team_strength(opponent_ids[i], match_times[i], self.STRENGTH_WINDOW)
             for i in range(n)
         ])
         strong_mask = strengths >= self.STRONG_PPG_THRESHOLD
@@ -207,7 +207,7 @@ class FeatureEngineer:
             'btts_rate_5': btts_rate_5,
         }
     
-    def _get_h2h_from_cache(self, home_team_name: str, away_team_name: str, before_date: str) -> Dict[str, float]:
+    def _get_h2h_from_cache(self, home_team_id: str, away_team_id: str, before_date: str) -> Dict[str, float]:
         """Get head-to-head stats using cached data (vectorized)."""
         completed = self._completed_cache
         
@@ -220,8 +220,8 @@ class FeatureEngineer:
                 'away_avg_goals': 1.0
             }
         
-        mask = (((completed['home_team_name'] == home_team_name) & (completed['away_team_name'] == away_team_name)) |
-                ((completed['home_team_name'] == away_team_name) & (completed['away_team_name'] == home_team_name))) & \
+        mask = (((completed['home_team_id'] == home_team_id) & (completed['away_team_id'] == away_team_id)) |
+                ((completed['home_team_id'] == away_team_id) & (completed['away_team_id'] == home_team_id))) & \
                (completed['start_time'] < before_date)
         h2h_matches = completed.loc[mask]
         
@@ -236,11 +236,11 @@ class FeatureEngineer:
             }
         
         # Vectorized calculations
-        is_home_first = (h2h_matches['home_team_name'] == home_team_name).values
+        is_home_first = (h2h_matches['home_team_id'] == home_team_id).values
         home_scores = h2h_matches['home_score'].fillna(0).values.astype(int)
         away_scores = h2h_matches['away_score'].fillna(0).values.astype(int)
         
-        # From perspective of home_team_name
+        # From perspective of home_team_id
         h_goals = np.where(is_home_first, home_scores, away_scores)
         a_goals = np.where(is_home_first, away_scores, home_scores)
         
@@ -256,7 +256,7 @@ class FeatureEngineer:
             'away_avg_goals': np.sum(a_goals) / n
         }
     
-    def _get_home_away_perf_from_cache(self, team_name: str, before_date: str, is_home: bool) -> Dict[str, float]:
+    def _get_home_away_perf_from_cache(self, team_id: str, before_date: str, is_home: bool) -> Dict[str, float]:
         """Get home/away performance using cached data (vectorized with lazy-indexed lookups)."""
         completed = self._completed_cache
         if completed is None or len(completed) == 0:
@@ -267,27 +267,27 @@ class FeatureEngineer:
             }
         
         # Build team index lazily on first access
-        if self._team_match_index is not None and team_name not in self._team_match_index:
-            self._team_match_index[team_name] = completed[
-                (completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)
+        if self._team_match_index is not None and team_id not in self._team_match_index:
+            self._team_match_index[team_id] = completed[
+                (completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)
             ]
         
         # Use pre-computed team index
-        if self._team_match_index is not None and team_name in self._team_match_index:
-            team_data = self._team_match_index[team_name]
+        if self._team_match_index is not None and team_id in self._team_match_index:
+            team_data = self._team_match_index[team_id]
             if is_home:
                 team_matches = team_data[
-                    (team_data['home_team_name'] == team_name) & (team_data['start_time'] < before_date)
+                    (team_data['home_team_id'] == team_id) & (team_data['start_time'] < before_date)
                 ]
             else:
                 team_matches = team_data[
-                    (team_data['away_team_name'] == team_name) & (team_data['start_time'] < before_date)
+                    (team_data['away_team_id'] == team_id) & (team_data['start_time'] < before_date)
                 ]
         else:
             if is_home:
-                mask = (completed['home_team_name'] == team_name) & (completed['start_time'] < before_date)
+                mask = (completed['home_team_id'] == team_id) & (completed['start_time'] < before_date)
             else:
-                mask = (completed['away_team_name'] == team_name) & (completed['start_time'] < before_date)
+                mask = (completed['away_team_id'] == team_id) & (completed['start_time'] < before_date)
             team_matches = completed.loc[mask]
         
         n = len(team_matches)
@@ -372,12 +372,12 @@ class FeatureEngineer:
             'odds_spread': max_home - min_home
         }
     
-    def _get_rest_days(self, team_name: str, current_match_date: str) -> float:
+    def _get_rest_days(self, team_id: str, current_match_date: str) -> float:
         """
         Calculate rest days (days between team's last match and current match).
         
         Args:
-            team_name: Team name to check
+            team_id: Team ID to check
             current_match_date: ISO format datetime string of current match
             
         Returns:
@@ -394,17 +394,17 @@ class FeatureEngineer:
                 return 0.0
             
             # Build team index lazily on first access
-            if self._team_match_index is not None and team_name not in self._team_match_index:
-                self._team_match_index[team_name] = completed[
-                    (completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)
+            if self._team_match_index is not None and team_id not in self._team_match_index:
+                self._team_match_index[team_id] = completed[
+                    (completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)
                 ]
             
             # Get team's previous matches (before current match)
-            if self._team_match_index is not None and team_name in self._team_match_index:
-                team_data = self._team_match_index[team_name]
+            if self._team_match_index is not None and team_id in self._team_match_index:
+                team_data = self._team_match_index[team_id]
                 previous_matches = team_data[team_data['start_time'] < current_match_date]
             else:
-                mask = ((completed['home_team_name'] == team_name) | (completed['away_team_name'] == team_name)) & \
+                mask = ((completed['home_team_id'] == team_id) | (completed['away_team_id'] == team_id)) & \
                        (completed['start_time'] < current_match_date)
                 previous_matches = completed.loc[mask]
             
@@ -637,19 +637,19 @@ class FeatureEngineer:
         
         fixture = fixture.iloc[0]
         start_time = fixture['start_time']
-        home_team_name = fixture['home_team_name']
-        away_team_name = fixture['away_team_name']
+        home_team_id = fixture['home_team_id']
+        away_team_id = fixture['away_team_id']
         
         # Compute features using cached data
-        home_form = self._get_team_form_from_cache(home_team_name, start_time)
-        away_form = self._get_team_form_from_cache(away_team_name, start_time)
-        h2h = self._get_h2h_from_cache(home_team_name, away_team_name, start_time)
-        home_perf = self._get_home_away_perf_from_cache(home_team_name, start_time, is_home=True)
-        away_perf = self._get_home_away_perf_from_cache(away_team_name, start_time, is_home=False)
+        home_form = self._get_team_form_from_cache(home_team_id, start_time)
+        away_form = self._get_team_form_from_cache(away_team_id, start_time)
+        h2h = self._get_h2h_from_cache(home_team_id, away_team_id, start_time)
+        home_perf = self._get_home_away_perf_from_cache(home_team_id, start_time, is_home=True)
+        away_perf = self._get_home_away_perf_from_cache(away_team_id, start_time, is_home=False)
         odds_feat = self._get_odds_from_cache(fixture_id)
         temporal_feat = self._get_temporal_features(start_time)
-        home_rest_days = self._get_rest_days(home_team_name, start_time)
-        away_rest_days = self._get_rest_days(away_team_name, start_time)
+        home_rest_days = self._get_rest_days(home_team_id, start_time)
+        away_rest_days = self._get_rest_days(away_team_id, start_time)
         tournament_ctx = self._get_tournament_context(
             fixture.get('tournament_name'),
             fixture.get('tournament_id')
