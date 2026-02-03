@@ -250,7 +250,14 @@
       "type": "shell",
       "command": "bun install",
       "options": {
-        "cwd": "${workspaceFolder}/src/arbihawk/dashboard/frontend"
+        "cwd": "${workspaceFolder}/src/arbihawk/dashboard/frontend",
+        "shell": {
+          "executable": "/usr/bin/bash",
+          "args": [
+            "--login",
+            "-c"
+          ]
+        }
       },
       "problemMatcher": []
     },
@@ -260,7 +267,14 @@
       "command": "bun run dev",
       "dependsOn": "Dashboard Frontend: Install Dependencies",
       "options": {
-        "cwd": "${workspaceFolder}/src/arbihawk/dashboard/frontend"
+        "cwd": "${workspaceFolder}/src/arbihawk/dashboard/frontend",
+        "shell": {
+          "executable": "/usr/bin/bash",
+          "args": [
+            "--login",
+            "-c"
+          ]
+        }
       },
       "isBackground": true,
       "problemMatcher": []
