@@ -1977,6 +1977,104 @@ async def import_data_endpoint(
 
 
 # =============================================================================
+# POLYMARKET ENDPOINTS
+# =============================================================================
+
+import asyncio
+import sys
+from pathlib import Path
+
+# Add polymarket to path
+polymarket_path = Path(__file__).parent.parent
+if str(polymarket_path) not in sys.path:
+    sys.path.insert(0, str(polymarket_path))
+
+@app.get("/api/polymarket/stats")
+async def get_polymarket_stats() -> Dict[str, Any]:
+    """Get Polymarket trading statistics."""
+    try:
+        from polymarket import MultiStrategyTrader
+        
+        trader = MultiStrategyTrader(bankroll=100.0)
+        stats = trader.get_stats()
+        
+        return stats
+    except Exception as e:
+        # Return empty stats if no data yet
+        return {
+            "total_trades": 0,
+            "executed_trades": 0,
+            "total_pnl": 0.0,
+            "total_expected_pnl": 0.0,
+            "bankroll": 100.0,
+            "available_bankroll": 100.0,
+            "strategy_stats": {
+                "Arbitrage": {"name": "Arbitrage", "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0},
+                "Momentum": {"name": "Momentum", "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0},
+                "Market Making": {"name": "Market Making", "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0},
+                "News Driven": {"name": "News Driven", "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0}
+            },
+            "recent_trades": []
+        }
+
+
+@app.post("/api/polymarket/scan")
+async def run_polymarket_scan() -> Dict[str, Any]:
+    """Run a Polymarket trading scan."""
+    try:
+        from polymarket import PolymarketScanner, MultiStrategyTrader
+        
+        async with PolymarketScanner(min_liquidity=1000) as scanner:
+            markets = await scanner.scan(limit=100)
+            
+            if not markets:
+                return {
+                    "success": True,
+                    "trades_executed": 0,
+                    "message": "No active markets found"
+                }
+            
+            trader = MultiStrategyTrader(bankroll=100.0)
+            trades = await trader.run_strategies(markets)
+            
+            # Broadcast log message
+            try:
+                await manager.broadcast_log({
+                    "timestamp": datetime.now().isoformat(),
+                    "level": "INFO",
+                    "domain": "polymarket",
+                    "message": f"Polymarket scan completed: {len(trades)} trades executed from {len(markets)} markets",
+                    "source": "api"
+                })
+            except Exception:
+                pass  # Manager might not be available
+            
+            return {
+                "success": True,
+                "trades_executed": len(trades),
+                "markets_scanned": len(markets),
+                "message": f"Scan completed: {len(trades)} trades executed"
+            }
+            
+    except Exception as e:
+        error_msg = str(e)
+        
+        # Broadcast error log
+        try:
+            await manager.broadcast_log({
+                "timestamp": datetime.now().isoformat(),
+                "level": "ERROR",
+                "domain": "polymarket",
+                "message": f"Polymarket scan failed: {error_msg}",
+                "source": "api"
+            })
+        except Exception:
+            pass  # Manager might not be available
+        
+        raise HTTPException(status_code=500, detail=f"Scan failed: {error_msg}")
+
+
+# =============================================================================
 # HEALTH ENDPOINT
 # =============================================================================
 

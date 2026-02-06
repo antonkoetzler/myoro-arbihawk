@@ -11,9 +11,10 @@ import { AutomationTab } from './components/tabs/AutomationTab';
 import { ModelsTab } from './components/tabs/ModelsTab';
 import { LogsTab } from './components/tabs/LogsTab';
 import { TradingTab } from './components/tabs/TradingTab';
+import { PolymarketTab } from './components/tabs/PolymarketTab';
 import type { HealthResponse, Bankroll } from './types';
 
-type Tab = 'system' | 'betting' | 'trading' | 'automation' | 'models' | 'logs';
+type Tab = 'system' | 'betting' | 'trading' | 'polymarket' | 'automation' | 'models' | 'logs';
 
 /**
  * Main App component - orchestrates the dashboard
@@ -24,7 +25,7 @@ function App() {
   // Load active tab from localStorage on mount
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const saved = localStorage.getItem(TAB_STORAGE_KEY);
-    if (saved && ['system', 'bets', 'betting', 'trading', 'automation', 'models', 'logs'].includes(saved)) {
+    if (saved && ['system', 'bets', 'betting', 'trading', 'polymarket', 'automation', 'models', 'logs'].includes(saved)) {
       return saved as Tab;
     }
     return 'system';
@@ -96,6 +97,7 @@ function App() {
     'system',
     'betting',
     'trading',
+    'polymarket',
     'automation',
     'models',
     'logs',
@@ -239,6 +241,7 @@ function App() {
         {activeTab === 'system' && <SystemTab api={api} showToast={showToast} />}
         {activeTab === 'betting' && <BettingTab api={api} bankroll={bankroll} />}
         {activeTab === 'trading' && <TradingTab api={api} />}
+        {activeTab === 'polymarket' && <PolymarketTab api={api} />}
         {activeTab === 'automation' && (
           <AutomationTab 
             api={api} 

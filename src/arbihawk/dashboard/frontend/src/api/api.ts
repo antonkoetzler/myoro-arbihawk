@@ -621,5 +621,62 @@ export const createApi = (
       })
         .then(handleResponse<{ success: boolean; watchlist: any }>)
         .catch((err) => handleError(err, 'Failed to update watchlist')),
+
+    // Polymarket API
+    getPolymarketStats: (): Promise<{
+      total_trades: number;
+      executed_trades: number;
+      total_pnl: number;
+      total_expected_pnl: number;
+      bankroll: number;
+      available_bankroll: number;
+      strategy_stats: Record<string, {
+        name: string;
+        total_pnl: number;
+        trade_count: number;
+        win_rate: number;
+      }>;
+      recent_trades: Array<{
+        trade_id: string;
+        strategy: string;
+        market_title: string;
+        trade_type: string;
+        amount: number;
+        expected_profit: number;
+        timestamp: string;
+        status: string;
+      }>;
+    }> =>
+      fetch('/api/polymarket/stats')
+        .then(handleResponse<{
+          total_trades: number;
+          executed_trades: number;
+          total_pnl: number;
+          total_expected_pnl: number;
+          bankroll: number;
+          available_bankroll: number;
+          strategy_stats: Record<string, {
+            name: string;
+            total_pnl: number;
+            trade_count: number;
+            win_rate: number;
+          }>;
+          recent_trades: Array<{
+            trade_id: string;
+            strategy: string;
+            market_title: string;
+            trade_type: string;
+            amount: number;
+            expected_profit: number;
+            timestamp: string;
+            status: string;
+          }>;
+        }>)
+        .catch((err) => handleError(err, 'Failed to fetch Polymarket stats')),
+
+    runPolymarketScan: (): Promise<{ success: boolean; trades_executed: number; message?: string }> =>
+      fetch('/api/polymarket/scan', { method: 'POST' })
+        .then(handleResponse<{ success: boolean; trades_executed: number; message?: string }>)
+        .catch((err) => handleError(err, 'Failed to run Polymarket scan')),
   };
 };
